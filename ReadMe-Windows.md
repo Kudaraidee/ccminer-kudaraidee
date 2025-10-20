@@ -69,7 +69,7 @@ The result will display the installed CUDA version.
 
 ```cmd
 cd C:\
-git clone https://github.com/tpruvot/ccminer.git
+git clone https://github.com/zuun1989/ccminer-kudaraidee.git
 cd ccminer
 ```
 
