@@ -72,7 +72,7 @@ int scanhash_rinhash(int thr_id, struct work *work, uint32_t max_nonce, unsigned
     // 2. LÔ CHO KERNEL (Kernel Chunk):
     // Đây là kích thước của MỖI LẦN gọi kernel.
     // 128K (131072) là giá trị an toàn, không gây treo TDR.
-    const uint32_t kernel_chunk_size = 131072;
+    const uint32_t kernel_chunk_size = 2097152;
     
     // Giới hạn tổng số nonces cho vòng lặp này
     max_nonce = min(first_nonce + total_batch_size, max_nonce);
