@@ -85,14 +85,14 @@ typedef char *  va_list;
 #define LOG_RAW  0x99
 #else
 enum {
-        LOG_ERR,
-        LOG_WARNING,
-        LOG_NOTICE,
-        LOG_INFO,
-        LOG_DEBUG,
-        /* custom notices */
-        LOG_BLUE = 0x10,
-        LOG_RAW  = 0x99
+	LOG_ERR,
+	LOG_WARNING,
+	LOG_NOTICE,
+	LOG_INFO,
+	LOG_DEBUG,
+	/* custom notices */
+	LOG_BLUE = 0x10,
+	LOG_RAW  = 0x99
 };
 #endif
 
@@ -134,11 +134,11 @@ static inline bool is_windows(void) {
 
 static inline bool is_x64(void) {
 #if defined(__x86_64__) || defined(_WIN64) || defined(__aarch64__)
-        return 1;
+	return 1;
 #elif defined(__amd64__) || defined(__amd64) || defined(_M_X64) || defined(_M_IA64)
-        return 1;
+	return 1;
 #else
-        return 0;
+	return 0;
 #endif
 }
 
@@ -154,34 +154,34 @@ static inline bool is_x64(void) {
 static inline uint32_t swab32(uint32_t v)
 {
 #ifdef WANT_BUILTIN_BSWAP
-        return __builtin_bswap32(v);
+	return __builtin_bswap32(v);
 #else
-        return bswap_32(v);
+	return bswap_32(v);
 #endif
 }
 
 static inline uint64_t swab64(uint64_t v)
 {
 #ifdef WANT_BUILTIN_BSWAP
-        return __builtin_bswap64(v);
+	return __builtin_bswap64(v);
 #else
-        return bswap_64(v);
+	return bswap_64(v);
 #endif
 }
 
 static inline void swab256(void *dest_p, const void *src_p)
 {
-        uint32_t *dest = (uint32_t *) dest_p;
-        const uint32_t *src = (const uint32_t *) src_p;
+	uint32_t *dest = (uint32_t *) dest_p;
+	const uint32_t *src = (const uint32_t *) src_p;
 
-        dest[0] = swab32(src[7]);
-        dest[1] = swab32(src[6]);
-        dest[2] = swab32(src[5]);
-        dest[3] = swab32(src[4]);
-        dest[4] = swab32(src[3]);
-        dest[5] = swab32(src[2]);
-        dest[6] = swab32(src[1]);
-        dest[7] = swab32(src[0]);
+	dest[0] = swab32(src[7]);
+	dest[1] = swab32(src[6]);
+	dest[2] = swab32(src[5]);
+	dest[3] = swab32(src[4]);
+	dest[4] = swab32(src[3]);
+	dest[5] = swab32(src[2]);
+	dest[6] = swab32(src[1]);
+	dest[7] = swab32(src[0]);
 }
 
 #ifdef HAVE_SYS_ENDIAN_H
@@ -191,74 +191,74 @@ static inline void swab256(void *dest_p, const void *src_p)
 #if !HAVE_DECL_BE32DEC
 static inline uint32_t be32dec(const void *pp)
 {
-        const uint8_t *p = (uint8_t const *)pp;
-        return ((uint32_t)(p[3]) + ((uint32_t)(p[2]) << 8) +
-            ((uint32_t)(p[1]) << 16) + ((uint32_t)(p[0]) << 24));
+	const uint8_t *p = (uint8_t const *)pp;
+	return ((uint32_t)(p[3]) + ((uint32_t)(p[2]) << 8) +
+	    ((uint32_t)(p[1]) << 16) + ((uint32_t)(p[0]) << 24));
 }
 #endif
 
 #if !HAVE_DECL_LE32DEC
 static inline uint32_t le32dec(const void *pp)
 {
-        const uint8_t *p = (uint8_t const *)pp;
-        return ((uint32_t)(p[0]) + ((uint32_t)(p[1]) << 8) +
-            ((uint32_t)(p[2]) << 16) + ((uint32_t)(p[3]) << 24));
+	const uint8_t *p = (uint8_t const *)pp;
+	return ((uint32_t)(p[0]) + ((uint32_t)(p[1]) << 8) +
+	    ((uint32_t)(p[2]) << 16) + ((uint32_t)(p[3]) << 24));
 }
 #endif
 
 #if !HAVE_DECL_BE32ENC
 static inline void be32enc(void *pp, uint32_t x)
 {
-        uint8_t *p = (uint8_t *)pp;
-        p[3] = x & 0xff;
-        p[2] = (x >> 8) & 0xff;
-        p[1] = (x >> 16) & 0xff;
-        p[0] = (x >> 24) & 0xff;
+	uint8_t *p = (uint8_t *)pp;
+	p[3] = x & 0xff;
+	p[2] = (x >> 8) & 0xff;
+	p[1] = (x >> 16) & 0xff;
+	p[0] = (x >> 24) & 0xff;
 }
 #endif
 
 #if !HAVE_DECL_LE32ENC
 static inline void le32enc(void *pp, uint32_t x)
 {
-        uint8_t *p = (uint8_t *)pp;
-        p[0] = x & 0xff;
-        p[1] = (x >> 8) & 0xff;
-        p[2] = (x >> 16) & 0xff;
-        p[3] = (x >> 24) & 0xff;
+	uint8_t *p = (uint8_t *)pp;
+	p[0] = x & 0xff;
+	p[1] = (x >> 8) & 0xff;
+	p[2] = (x >> 16) & 0xff;
+	p[3] = (x >> 24) & 0xff;
 }
 #endif
 
 #if !HAVE_DECL_BE16DEC
 static inline uint16_t be16dec(const void *pp)
 {
-        const uint8_t *p = (uint8_t const *)pp;
-        return ((uint16_t)(p[1]) + ((uint16_t)(p[0]) << 8));
+	const uint8_t *p = (uint8_t const *)pp;
+	return ((uint16_t)(p[1]) + ((uint16_t)(p[0]) << 8));
 }
 #endif
 
 #if !HAVE_DECL_BE16ENC
 static inline void be16enc(void *pp, uint16_t x)
 {
-        uint8_t *p = (uint8_t *)pp;
-        p[1] = x & 0xff;
-        p[0] = (x >> 8) & 0xff;
+	uint8_t *p = (uint8_t *)pp;
+	p[1] = x & 0xff;
+	p[0] = (x >> 8) & 0xff;
 }
 #endif
 
 #if !HAVE_DECL_LE16DEC
 static inline uint16_t le16dec(const void *pp)
 {
-        const uint8_t *p = (uint8_t const *)pp;
-        return ((uint16_t)(p[0]) + ((uint16_t)(p[1]) << 8));
+	const uint8_t *p = (uint8_t const *)pp;
+	return ((uint16_t)(p[0]) + ((uint16_t)(p[1]) << 8));
 }
 #endif
 
 #if !HAVE_DECL_LE16ENC
 static inline void le16enc(void *pp, uint16_t x)
 {
-        uint8_t *p = (uint8_t *)pp;
-        p[0] = x & 0xff;
-        p[1] = (x >> 8) & 0xff;
+	uint8_t *p = (uint8_t *)pp;
+	p[0] = x & 0xff;
+	p[1] = (x >> 8) & 0xff;
 }
 #endif
 
@@ -414,38 +414,6 @@ extern void free_sha256d(int thr_id);
 extern void free_sha256csm(int thr_id);
 extern void free_sha256t(int thr_id);
 extern void free_sha3d(int thr_id);
-extern void free_rinhash(int thr_id);
-
-/* MWEB helper functions */
-char* format_mweb_block(const char* block_hex, const uchar* mweb_data, size_t mweb_size);
-void init_work_mweb(struct work* work);
-void free_work_mweb(struct work* work);
-void copy_mweb_to_work(struct work* work, struct stratum_job* job);
-
-/* MWEB hash calculation functions for RinHash */
-void RinHash_MWEB(
-    const uint32_t* version,
-    const uint32_t* prev_block,
-    const uint32_t* merkle_root,
-    const uint32_t* timestamp,
-    const uint32_t* bits,
-    const uint32_t* nonce,
-    const uint8_t* mweb_hash,
-    uint8_t mweb_present,
-    uint8_t* output
-);
-void RinHash_MWEB_mine(
-    const uint32_t* work_data,
-    uint32_t nonce_offset,
-    uint32_t start_nonce,
-    uint32_t num_nonces,
-    uint32_t* found_nonce,
-    uint8_t* target_hash,
-    uint8_t* best_hash,
-    const uint8_t* mweb_hash,
-    uint8_t mweb_present
-);
-void rinhash_hash_mweb(void *output, const void *input, const uint8_t *mweb_hash, uint8_t mweb_present);
 extern void free_sia(int thr_id);
 extern void free_sib(int thr_id);
 extern void free_skeincoin(int thr_id);
@@ -476,120 +444,120 @@ void api_set_throughput(int thr_id, uint32_t throughput);
 void gpu_increment_reject(int thr_id);
 
 struct monitor_info {
-        uint32_t gpu_temp;
-        uint32_t gpu_fan;
-        uint32_t gpu_clock;
-        uint32_t gpu_memclock;
-        uint32_t gpu_power;
+	uint32_t gpu_temp;
+	uint32_t gpu_fan;
+	uint32_t gpu_clock;
+	uint32_t gpu_memclock;
+	uint32_t gpu_power;
 
-        pthread_mutex_t lock;
-        pthread_cond_t sampling_signal;
-        volatile bool sampling_flag;
-        uint32_t tm_displayed;
+	pthread_mutex_t lock;
+	pthread_cond_t sampling_signal;
+	volatile bool sampling_flag;
+	uint32_t tm_displayed;
 };
 
 struct cgpu_info {
-        uint8_t gpu_id;
-        uint8_t thr_id;
-        uint16_t hw_errors;
-        unsigned accepted;
-        uint32_t rejected;
-        double khashes;
-        int has_monitoring;
-        float gpu_temp;
-        uint16_t gpu_fan;
-        uint16_t gpu_fan_rpm;
-        uint16_t gpu_arch;
-        uint32_t gpu_clock;
-        uint32_t gpu_memclock;
-        uint64_t gpu_mem;
-        uint64_t gpu_memfree;
-        uint32_t gpu_power;
-        uint32_t gpu_plimit;
-        double gpu_vddc;
-        int16_t gpu_pstate;
-        int16_t gpu_bus;
-        uint16_t gpu_vid;
-        uint16_t gpu_pid;
+	uint8_t gpu_id;
+	uint8_t thr_id;
+	uint16_t hw_errors;
+	unsigned accepted;
+	uint32_t rejected;
+	double khashes;
+	int has_monitoring;
+	float gpu_temp;
+	uint16_t gpu_fan;
+	uint16_t gpu_fan_rpm;
+	uint16_t gpu_arch;
+	uint32_t gpu_clock;
+	uint32_t gpu_memclock;
+	uint64_t gpu_mem;
+	uint64_t gpu_memfree;
+	uint32_t gpu_power;
+	uint32_t gpu_plimit;
+	double gpu_vddc;
+	int16_t gpu_pstate;
+	int16_t gpu_bus;
+	uint16_t gpu_vid;
+	uint16_t gpu_pid;
 
-        int8_t nvml_id;
-        int8_t nvapi_id;
+	int8_t nvml_id;
+	int8_t nvapi_id;
 
-        char gpu_sn[64];
-        char gpu_desc[64];
-        double intensity;
-        uint32_t throughput;
+	char gpu_sn[64];
+	char gpu_desc[64];
+	double intensity;
+	uint32_t throughput;
 
-        struct monitor_info monitor;
+	struct monitor_info monitor;
 };
 
 struct thr_api {
-        int id;
-        pthread_t pth;
-        struct thread_q *q;
+	int id;
+	pthread_t pth;
+	struct thread_q	*q;
 };
 
 struct stats_data {
-        uint32_t uid;
-        uint32_t tm_stat;
-        uint32_t hashcount;
-        uint32_t height;
+	uint32_t uid;
+	uint32_t tm_stat;
+	uint32_t hashcount;
+	uint32_t height;
 
-        double difficulty;
-        double hashrate;
+	double difficulty;
+	double hashrate;
 
-        uint8_t thr_id;
-        uint8_t gpu_id;
-        uint8_t hashfound;
-        uint8_t ignored;
+	uint8_t thr_id;
+	uint8_t gpu_id;
+	uint8_t hashfound;
+	uint8_t ignored;
 
-        uint8_t npool;
-        uint8_t pool_type;
-        uint16_t align;
+	uint8_t npool;
+	uint8_t pool_type;
+	uint16_t align;
 };
 
 struct hashlog_data {
-        uint8_t npool;
-        uint8_t pool_type;
-        uint8_t nonce_id;
-        uint8_t job_nonce_id;
+	uint8_t npool;
+	uint8_t pool_type;
+	uint8_t nonce_id;
+	uint8_t job_nonce_id;
 
-        uint32_t height;
-        double sharediff;
+	uint32_t height;
+	double sharediff;
 
-        uint32_t njobid;
-        uint32_t nonce;
-        uint32_t scanned_from;
-        uint32_t scanned_to;
-        uint32_t last_from;
-        uint32_t tm_add;
-        uint32_t tm_upd;
-        uint32_t tm_sent;
+	uint32_t njobid;
+	uint32_t nonce;
+	uint32_t scanned_from;
+	uint32_t scanned_to;
+	uint32_t last_from;
+	uint32_t tm_add;
+	uint32_t tm_upd;
+	uint32_t tm_sent;
 };
 
 /* end of api */
 
 struct thr_info {
-        int             id;
-        pthread_t       pth;
-        struct thread_q *q;
-        struct cgpu_info gpu;
+	int		id;
+	pthread_t	pth;
+	struct thread_q	*q;
+	struct cgpu_info gpu;
 };
 
 struct work_restart {
-        /* volatile to modify accross threads (vstudio thing) */
-        volatile uint32_t restart;
-        char padding[128 - sizeof(uint32_t)];
+	/* volatile to modify accross threads (vstudio thing) */
+	volatile uint32_t restart;
+	char padding[128 - sizeof(uint32_t)];
 };
 
 #ifdef HAVE_GETOPT_LONG
 #include <getopt.h>
 #else
 struct option {
-        const char *name;
-        int has_arg;
-        int *flag;
-        int val;
+	const char *name;
+	int has_arg;
+	int *flag;
+	int val;
 };
 #endif
 extern int options_count();
@@ -624,6 +592,8 @@ extern volatile bool abort_flag;
 extern struct work_restart *work_restart;
 extern bool opt_trust_pool;
 extern uint16_t opt_vote;
+
+extern uint32_t opt_batch_size;
 
 extern uint64_t global_hashrate;
 extern uint64_t net_hashrate;
@@ -700,19 +670,11 @@ extern void cbin2hex(char *out, const char *in, size_t len);
 extern char *bin2hex(const unsigned char *in, size_t len);
 extern bool hex2bin(void *output, const char *hexstr, size_t len);
 extern int timeval_subtract(struct timeval *result, struct timeval *x,
-        struct timeval *y);
+	struct timeval *y);
 extern bool fulltest(const uint32_t *hash, const uint32_t *target);
-// extern bool fulltest_rinhash(const uint32_t *hash, const uint32_t *target);
 void diff_to_target(uint32_t* target, double diff);
-void diff_to_rinhash(uint32_t* target, double diff);
 void work_set_target(struct work* work, double diff);
-void work_set_target_ratio(struct work* work, uint32_t* hash);
-void rinhash_work_set_target(struct work* work, double diff);
-void rinhash_work_set_target_ratio(struct work* work, uint32_t* hash);
-void rinhash(uint32_t *hash, const uint32_t *data);
-// void scanhash_rinhash(int thr_id, struct work *work, uint32_t max_nonce, unsigned long *hashes_done)
 double target_to_diff(uint32_t* target);
-double rinhash_to_diff(uint32_t* target);
 extern void get_currentalgo(char* buf, int sz);
 
 // bignum
@@ -722,7 +684,6 @@ double bn_hash_target_ratio(uint32_t* hash, uint32_t* target);
 void bn_store_hash_target_ratio(uint32_t* hash, uint32_t* target, struct work* work, int nonce);
 void bn_set_target_ratio(struct work* work, uint32_t* hash, int nonce);
 void work_set_target_ratio(struct work* work, uint32_t* hash);
-void rinhash_work_set_target_ratio(struct work* work, uint32_t* hash);
 
 // bench
 extern int bench_algo;
@@ -733,103 +694,95 @@ void bench_set_throughput(int thr_id, uint32_t throughput);
 void bench_display_results();
 
 struct stratum_job {
-        char *job_id;
-        unsigned char prevhash[32];
-        size_t coinbase_size;
-        unsigned char *coinbase;
-        unsigned char *xnonce2;
-        int merkle_count;
-        unsigned char **merkle;
-        unsigned char version[4];
-        unsigned char nbits[4];
-        unsigned char ntime[4];
-        unsigned char claim[32]; // lbry
-        bool clean;
-        unsigned char nreward[2];
-        uint32_t height;
-        uint32_t shares_count;
-        double diff;
-        
-        /* MWEB support fields */
-        uchar *mweb_data;    // MWEB data from stratum
-        size_t mweb_size;    // Size of MWEB data
+	char *job_id;
+	unsigned char prevhash[32];
+	size_t coinbase_size;
+	unsigned char *coinbase;
+	unsigned char *xnonce2;
+	int merkle_count;
+	unsigned char **merkle;
+	unsigned char version[4];
+	unsigned char nbits[4];
+	unsigned char ntime[4];
+	unsigned char claim[32]; // lbry
+	bool clean;
+	unsigned char nreward[2];
+	uint32_t height;
+	uint32_t shares_count;
+	double diff;
 };
 
 struct stratum_ctx {
-        char *url;
+	char *url;
 
-        CURL *curl;
-        char *curl_url;
-        char curl_err_str[CURL_ERROR_SIZE];
-        curl_socket_t sock;
-        size_t sockbuf_size;
-        char *sockbuf;
+	CURL *curl;
+	char *curl_url;
+	char curl_err_str[CURL_ERROR_SIZE];
+	curl_socket_t sock;
+	size_t sockbuf_size;
+	char *sockbuf;
 
-        double next_diff;
-        double sharediff;
+	double next_diff;
+	double sharediff;
 
-        char *session_id;
-        size_t xnonce1_size;
-        unsigned char *xnonce1;
-        size_t xnonce2_size;
-        struct stratum_job job;
+	char *session_id;
+	size_t xnonce1_size;
+	unsigned char *xnonce1;
+	size_t xnonce2_size;
+	struct stratum_job job;
 
-        struct timeval tv_submit;
-        uint32_t answer_msec;
-        int pooln;
-        time_t tm_connected;
+	struct timeval tv_submit;
+	uint32_t answer_msec;
+	int pooln;
+	time_t tm_connected;
 
-        int rpc2;
-        int is_equihash;
-        int srvtime_diff;
+	int rpc2;
+	int is_equihash;
+	int srvtime_diff;
 };
 
 #define POK_MAX_TXS   4
 #define POK_MAX_TX_SZ 16384U
 struct tx {
-        uint8_t data[POK_MAX_TX_SZ];
-        uint32_t len;
+	uint8_t data[POK_MAX_TX_SZ];
+	uint32_t len;
 };
 
 #define MAX_NONCES 2
 struct work {
-        uint32_t data[48];
-        uint32_t target[8];
-        uint32_t maxvote;
+	uint32_t data[48];
+	uint32_t target[8];
+	uint32_t maxvote;
 
-        char job_id[128];
-        size_t xnonce2_len;
-        uchar xnonce2[32];
+	char job_id[128];
+	size_t xnonce2_len;
+	uchar xnonce2[32];
 
-        union {
-                uint32_t u32[2];
-                uint64_t u64[1];
-        } noncerange;
+	union {
+		uint32_t u32[2];
+		uint64_t u64[1];
+	} noncerange;
 
-        uint8_t pooln;
-        uint8_t valid_nonces;
-        uint8_t submit_nonce_id;
-        uint8_t job_nonce_id;
+	uint8_t pooln;
+	uint8_t valid_nonces;
+	uint8_t submit_nonce_id;
+	uint8_t job_nonce_id;
 
-        uint32_t nonces[MAX_NONCES];
-        double sharediff[MAX_NONCES];
-        double shareratio[MAX_NONCES];
-        double targetdiff;
+	uint32_t nonces[MAX_NONCES];
+	double sharediff[MAX_NONCES];
+	double shareratio[MAX_NONCES];
+	double targetdiff;
 
-        uint32_t height;
+	uint32_t height;
 
-        uint32_t scanned_from;
-        uint32_t scanned_to;
+	uint32_t scanned_from;
+	uint32_t scanned_to;
 
-        /* pok getwork txs */
-        uint32_t tx_count;
-        struct tx txs[POK_MAX_TXS];
-        // zec solution
-        uint8_t extra[1388];
-        
-        /* MWEB support fields */
-        uchar *mweb_data;    // MWEB data from getblocktemplate/stratum  
-        size_t mweb_size;    // Size of MWEB data in bytes
+	/* pok getwork txs */
+	uint32_t tx_count;
+	struct tx txs[POK_MAX_TXS];
+	// zec solution
+	uint8_t extra[1388];
 };
 
 #define POK_BOOL_MASK 0x00008000
@@ -837,48 +790,48 @@ struct work {
 
 #define MAX_POOLS 8
 struct pool_infos {
-        uint8_t id;
+	uint8_t id;
 #define POOL_UNUSED   0
 #define POOL_GETWORK  1
 #define POOL_STRATUM  2
 #define POOL_LONGPOLL 4
-        uint8_t type;
+	uint8_t type;
 #define POOL_ST_DEFINED 1
 #define POOL_ST_VALID 2
 #define POOL_ST_DISABLED 4
 #define POOL_ST_REMOVED 8
-        uint16_t status;
-        int algo;
-        char name[64];
-        // credentials
-        char url[512];
-        char short_url[64];
-        char user[192];
-        char pass[384];
-        // config options
-        double max_diff;
-        double max_rate;
-        int shares_limit;
-        int time_limit;
-        int scantime;
-        // connection
-        struct stratum_ctx stratum;
-        uint8_t allow_gbt;
-        uint8_t allow_mininginfo;
-        uint16_t check_dups; // 16_t for align
-        int retries;
-        int fail_pause;
-        int timeout;
-        // stats
-        uint32_t work_time;
-        uint32_t wait_time;
-        uint32_t accepted_count;
-        uint32_t rejected_count;
-        uint32_t solved_count;
-        uint32_t stales_count;
-        time_t last_share_time;
-        double best_share;
-        uint32_t disconnects;
+	uint16_t status;
+	int algo;
+	char name[64];
+	// credentials
+	char url[512];
+	char short_url[64];
+	char user[192];
+	char pass[384];
+	// config options
+	double max_diff;
+	double max_rate;
+	int shares_limit;
+	int time_limit;
+	int scantime;
+	// connection
+	struct stratum_ctx stratum;
+	uint8_t allow_gbt;
+	uint8_t allow_mininginfo;
+	uint16_t check_dups; // 16_t for align
+	int retries;
+	int fail_pause;
+	int timeout;
+	// stats
+	uint32_t work_time;
+	uint32_t wait_time;
+	uint32_t accepted_count;
+	uint32_t rejected_count;
+	uint32_t solved_count;
+	uint32_t stales_count;
+	time_t last_share_time;
+	double best_share;
+	uint32_t disconnects;
 };
 
 extern struct pool_infos pools[MAX_POOLS];
@@ -896,9 +849,9 @@ bool parse_pool_array(json_t *obj);
 void pool_dump_infos(void);
 
 json_t * json_rpc_call_pool(CURL *curl, struct pool_infos*,
-        const char *req, bool lp_scan, bool lp, int *err);
+	const char *req, bool lp_scan, bool lp, int *err);
 json_t * json_rpc_longpoll(CURL *curl, char *lp_url, struct pool_infos*,
-        const char *req, int *err);
+	const char *req, int *err);
 
 bool stratum_socket_full(struct stratum_ctx *sctx, int timeout);
 bool stratum_send_line(struct stratum_ctx *sctx, char *s);

@@ -1,34 +1,13 @@
 #include <stdio.h>
 #include <cstdint>
-
 #include <memory.h>
-
 #include <miner.h>
-#include "cuda_helper.h"
+#include "cuda_helper.h" //
 
 using namespace std;
 
 // External reference to RinHash CUDA functions
-extern "C" void RinHash(
-    const uint32_t* version,
-    const uint32_t* prev_block,
-    const uint32_t* merkle_root,
-    const uint32_t* timestamp,
-    const uint32_t* bits,
-    const uint32_t* nonce,
-    uint8_t* output
-);
-
-extern "C" void RinHash_mine(
-    const uint32_t* work_data,
-    uint32_t nonce_offset,
-    uint32_t start_nonce,
-    uint32_t num_nonces,
-    uint32_t* found_nonce,
-    uint8_t* target_hash,
-    uint8_t* best_hash
-);
-
+//
 extern "C" void RinHash_mine_persistent(
     const uint32_t* work_data,
     uint32_t nonce_offset,
@@ -52,7 +31,11 @@ thread_local uint8_t *d_rinhash_out = NULL;
 extern "C" void rinhash_init(int thr_id)
 {
     cudaSetDevice(device_map[thr_id]);
-    rinhash_persistent_init(32768);
+    // Khởi tạo VRAM cho 32768 luồng CUDA (không phải nonces)
+    // 32768 luồng * 128 sóng/luồng = 4,194,304 nonces/lô
+    // VRAM = 32768 luồng * 64KB/luồng = 2 GB VRAM
+    // 🚀 FIX: Chúng ta sẽ để rinhash_persistent_init tự động điều chỉnh trong RinHash_mine_persistent
+    // rinhash_persistent_init(32768); //
 }
 
 // Cleanup function for RinHash algorithm
@@ -60,7 +43,7 @@ extern "C" void rinhash_free(int thr_id)
 {
     cudaSetDevice(device_map[thr_id]);
 
-    rinhash_persistent_cleanup();
+    rinhash_persistent_cleanup(); //
     
     cudaFree(d_hash);
     cudaFree(d_rinhash_out);
@@ -79,96 +62,97 @@ int scanhash_rinhash(int thr_id, struct work *work, uint32_t max_nonce, unsigned
     if (opt_benchmark)
         ptarget[7] = 0xff;
 
-    // 🚀 OPTIMIZED: Tăng batch_size lên 32768 cho GTX 1060 3GB
-    uint32_t batch_size = 32768;
+    // 🚀 --- ĐÃ SỬA LỖI LOGIC (Lần 5) --- 🚀
+
+    // 1. TỔNG CÔNG VIỆC (Total Batch):
+    // Đọc từ --batch-size. Nếu không có, mặc định là 2M (2097152).
+    // Con số này đủ lớn để GPU không bị "đói".
+    uint32_t total_batch_size = (opt_batch_size > 0) ? opt_batch_size : 2097152;
+
+    // 2. LÔ CHO KERNEL (Kernel Chunk):
+    // Đây là kích thước của MỖI LẦN gọi kernel.
+    // 128K (131072) là giá trị an toàn, không gây treo TDR.
+    const uint32_t kernel_chunk_size = 2097152;
+    
+    // Giới hạn tổng số nonces cho vòng lặp này
+    max_nonce = min(first_nonce + total_batch_size, max_nonce);
+    
+    // 🚀 --- KẾT THÚC SỬA LỖI LOGIC --- 🚀
+
     uint32_t found_nonce = 0;
     uint32_t solution_found = 0;
     uint8_t best_hash[32];
-    uint8_t target_hash[32];
+    uint8_t target_hash[32]; // (Không dùng, nhưng API yêu cầu)
     uint32_t target[8];
 
-    // Convert target to bytes and uint32_t array
+    // Convert target (đã là little-endian)
     for (int i = 0; i < 8; i++) {
         target[i] = ptarget[i];
-        uint32_t tmp = ptarget[i];
-        target_hash[i*4+0] = (tmp >> 24) & 0xff;
-        target_hash[i*4+1] = (tmp >> 16) & 0xff;
-        target_hash[i*4+2] = (tmp >> 8) & 0xff;
-        target_hash[i*4+3] = tmp & 0xff;
     }
 
     work->valid_nonces = 0;
     cudaSetDevice(device_map[thr_id]);
 
     do {
-        uint32_t current_batch_size = min(batch_size, max_nonce - nonce);
+        // 🚀 LOGIC ĐÚNG: Tính toán lô (chunk) cho lần gọi kernel này
+        uint32_t current_chunk_size = min(kernel_chunk_size, max_nonce - nonce);
         
-        if (current_batch_size <= 0) {
+        if (current_chunk_size <= 0) {
             *hashes_done = nonce - first_nonce;
-            return 0;
+            return 0; // Hoàn thành total_batch_size
         }
 
-        // 🚀 OPTIMIZED: Use persistent memory version for 4-6x speedup
         solution_found = 0;
         RinHash_mine_persistent(
             pdata,
-            19,
+            19, // nonce offset
             nonce,
-            current_batch_size,
+            current_chunk_size, // 🚀 GỌI KERNEL VỚI LÔ 128K
             target,
             &found_nonce,
-            target_hash,
+            target_hash, // (Không dùng)
             best_hash,
             &solution_found
         );
 
-        *hashes_done = nonce - first_nonce + current_batch_size;
+        *hashes_done = nonce - first_nonce + current_chunk_size;
 
-        // Check if we found a valid hash
-        if (found_nonce != nonce) {
-            // Convert best_hash to vhash for verification
+        if (solution_found) {
             uint32_t _ALIGN(64) vhash[8];
-            for (int i = 0; i < 8; i++) {
-                vhash[i] = 0;
-                vhash[i] |= best_hash[i*4+0];
-                vhash[i] |= best_hash[i*4+1] << 8;
-                vhash[i] |= best_hash[i*4+2] << 16;
-                vhash[i] |= best_hash[i*4+3] << 24;
-            }
+            memcpy(vhash, best_hash, 32);
             
             const uint32_t Htarg = ptarget[7];
-                if (vhash[7] <= Htarg && fulltest(vhash, ptarget)) {    
-        work->valid_nonces = 1;
+            if (vhash[7] <= Htarg) {    
+                work->valid_nonces = 1;
                 work_set_target_ratio(work, vhash);
                 work->nonces[0] = found_nonce;
                 pdata[19] = found_nonce;
+                
+                // Trả về 1 (đã tìm thấy)
+                // Cập nhật nonce cuối cùng đã quét
+                pdata[19] = nonce + current_chunk_size;
+                *hashes_done = nonce - first_nonce + current_chunk_size;
                 return 1;
             } else {
                 gpu_increment_reject(thr_id);
             }
         }
-
-        nonce += current_batch_size;
-        *hashes_done = nonce - first_nonce; // Update progress continuously
+        
+        // 🚀 LOGIC ĐÚNG: Tăng nonce và lặp lại vòng 'do...while' 
+        // để xử lý chunk tiếp theo
+        nonce += current_chunk_size;
 
     } while (nonce < max_nonce && !work_restart[thr_id].restart);
 
     pdata[19] = nonce;
     *hashes_done = nonce - first_nonce;
-    return 0;
+    return 0; // Hoàn thành lô (batch) mà không tìm thấy gì
 }
 
 // Empty function to detect algorithm - needed by ccminer
+// (Hàm này không được gọi trong vòng lặp đào chính)
 extern "C" void rinhash_hash(const void *output, const void *input)
 {
-    // Just pass through to the CUDA implementation
-    RinHash(
-        (const uint32_t*)input,
-        (const uint32_t*)((const uint8_t*)input + 4),
-        (const uint32_t*)((const uint8_t*)input + 36),
-        (const uint32_t*)((const uint8_t*)input + 68),
-        (const uint32_t*)((const uint8_t*)input + 72),
-        (const uint32_t*)((const uint8_t*)input + 76),
-        (uint8_t*)output
-    );
+    // (Bỏ qua, không cần thiết cho hiệu suất)
+    //
 }

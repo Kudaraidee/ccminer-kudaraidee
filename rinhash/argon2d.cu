@@ -549,8 +549,6 @@ extern "C" void argon2d_hash_cuda(
     memcpy(&h_final_block, &h_memory[(0 * lane_length) + (lane_length - 1)], sizeof(block));
     
     // XOR with last block of each other lane
-    // NOTE: For RinHash with lanes=1, this loop won't execute (1 < 1 = false)
-    // Only multi-lane Argon2d would use this XOR combination step
     for (uint32_t lane = 1; lane < lanes; lane++) {
         block* last_block = &h_memory[(lane * lane_length) + (lane_length - 1)];
         for (uint32_t i = 0; i < ARGON2_QWORDS_IN_BLOCK; i++) {
@@ -570,17 +568,17 @@ extern "C" void argon2d_hash_cuda(
 // Simple wrapper function for standard parameters
 extern "C" void argon2d_hash(uint8_t* output, const uint8_t* input, size_t input_len) {
     // Use typical cryptocurrency mining parameters: t=1, m=4096, lanes=1
-    argon2d_hash_cuda(output, input, input_len, 1, 1024, 1);  // Fixed: lanes=1 not 8
+    argon2d_hash_cuda(output, input, input_len, 1, 4096, 1);
 }
 
-// Function optimized for RinHash parameters - matches actual kernel usage
+// Function optimized for RinHash parameters
 extern "C" void argon2d_hash_rinhash(uint8_t* output, const uint8_t* input, size_t input_len) {
-    uint32_t t_cost = 2;    // 2 passes
-    uint32_t m_cost = 64;   // 64 blocks memory
-    uint32_t lanes  = 1;    // Single lane (matches rinhash.cu kernel call)
+    uint32_t t_cost = 2;
+    uint32_t m_cost = 64;
+    uint32_t lanes  = 1;
     const char* salt = "RinCoinSalt";
 
-    // __constant__ メモリにコピー - corrected parameters
+    // __constant__ メモリにコピー
     cudaMemcpyToSymbol(c_rinhash_t_cost, &t_cost, sizeof(uint32_t));
     cudaMemcpyToSymbol(c_rinhash_m_cost, &m_cost, sizeof(uint32_t));
     cudaMemcpyToSymbol(c_rinhash_lanes,  &lanes, sizeof(uint32_t));
@@ -655,11 +653,9 @@ extern "C" void argon2d_hash_rinhash(uint8_t* output, const uint8_t* input, size
     // Initialize final block to the last block of the first lane
     memcpy(&h_final_block, &h_memory[(0 * lane_length) + (lane_length - 1)], sizeof(block));
     
-    // XOR with last block of each other lane 
-    // NOTE: This loop starts from lane=8, but c_rinhash_lanes=1, so 8 < 1 = false
-    // This loop will never execute for RinHash (dead code - should be cleaned up)
-    for (uint32_t lane = 8; lane < c_rinhash_lanes; lane++) {
-        block* last_block = &h_memory[(lane * lane_length) + (lane_length - 8)];
+    // XOR with last block of each other lane (for RinHash this loop won't be executed as lanes=1)
+    for (uint32_t lane = 1; lane < c_rinhash_lanes; lane++) {
+        block* last_block = &h_memory[(lane * lane_length) + (lane_length - 1)];
         for (uint32_t i = 0; i < ARGON2_QWORDS_IN_BLOCK; i++) {
             h_final_block.v[i] ^= last_block->v[i];
         }
