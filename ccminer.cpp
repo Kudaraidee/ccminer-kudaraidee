@@ -314,7 +314,8 @@ Options:\n\
 			skein		Skein SHA2 (Skeincoin)\n\
 			skein2		Double Skein (Woodcoin)\n\
 			skunk		Skein Cube Fugue Streebog\n\
-            soterg		Soteria\n\
+			skydoge		SkyDoge\n\
+			soterg		Soteria\n\
 			s3		S3 (1Coin)\n\
 			timetravel	Machinecoin permuted x8\n\
 			tribus 		Denarius\n\
@@ -371,8 +372,8 @@ Options:\n\
       --segwit          Agree with Segwit (Solo Mining only)\n\
       --coinbase-addr=ADDR  payout address for solo mining\n\
       --no-getwork      disable getwork support\n\
-	  --yescrypt-param  set params(N,r,p) for yescrypt\n\
-	  --yescrypt-key    set key for yescrypt\n\
+      --yescrypt-param  set params(N,r,p) for yescrypt\n\
+      --yescrypt-key    set key for yescrypt\n\
   -n, --ndevs           list cuda devices\n\
   -N, --statsavg        number of samples used to compute hashrate (default: 30)\n\
       --no-gbt          disable getblocktemplate support (height check in solo)\n\
@@ -1679,12 +1680,12 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 		case ALGO_FUGUE256:
 		case ALGO_GROESTL:
 		case ALGO_KECCAK:
-		case ALGO_SHA3D:
-			sha3d(merkle_root, sctx->job.coinbase, (int)sctx->job.coinbase_size);
-			break;
 		case ALGO_BLAKECOIN:
 		case ALGO_WHIRLCOIN:
 			SHA256((uchar*)sctx->job.coinbase, sctx->job.coinbase_size, (uchar*)merkle_root);
+			break;
+		case ALGO_SHA3D:
+			sha3d(merkle_root, sctx->job.coinbase, (int)sctx->job.coinbase_size);
 			break;
 		case ALGO_GOSTCOIN:
 			gostd(merkle_root, sctx->job.coinbase, (int)sctx->job.coinbase_size);
@@ -1864,8 +1865,11 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 		case ALGO_X16RV2:
 		case ALGO_X16S:
 		case ALGO_X21S:
+			work_set_target(work, sctx->job.diff / (256.0 * opt_difficulty));
+			break;
 		case ALGO_EVOHASH:
 		case ALGO_RINHASH:
+		case ALGO_SKYDOGE:
 			work_set_target(work, sctx->job.diff / opt_difficulty);
 			break;
 		case ALGO_KECCAK:
@@ -2645,6 +2649,9 @@ static void *miner_thread(void *userdata)
 			break;
 		case ALGO_SKUNK:
 			rc = scanhash_skunk(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_SKYDOGE:
+			rc = scanhash_skydoge(thr_id, &work, max_nonce, &hashes_done);
 			break;
 		case ALGO_SHA256CSM:
 			rc = scanhash_sha256csm(thr_id, &work, max_nonce, &hashes_done);

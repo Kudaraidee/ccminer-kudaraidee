@@ -671,6 +671,7 @@
     </CudaCompile>
     <CudaCompile Include="x17\hmq17.cu" />
     <CudaCompile Include="x17\x17.cu" />
+	<CudaCompile Include="x17\skydoge.cu" />
     <CudaCompile Include="x17\cuda_x17_haval256.cu">
     </CudaCompile>
     <CudaCompile Include="x17\cuda_x17_sha512.cu">

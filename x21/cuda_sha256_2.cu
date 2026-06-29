@@ -196,3 +196,43 @@ void sha256_cpu_hash_64(int thr_id, int threads, uint32_t *d_hash) {
 	dim3 block(threadsperblock);
 	sha256_gpu_hash_64<<<grid, block>>>(threads, d_hash);
 }
+
+
+// Variant that also zeros the high 32 bytes (words 8..15) of each 64-byte slot,
+// so a following 64-byte hash consumes (32 bytes digest || 32 bytes zero).
+// Used by SkyDoge for its sha256 -> haval256 finalize (saves a separate launch).
+__global__ void __launch_bounds__(512,2) sha256_gpu_hash_64z(int threads, uint32_t *g_hash)
+{
+	int thread = (blockDim.x * blockIdx.x + threadIdx.x);
+	if (thread < threads) {
+    uint32_t in[16], in2[16], buf[8];
+    uint32_t* inout = &g_hash[thread<<4];
+
+    #pragma unroll
+		for (int i = 0; i < 8; i++) buf[i] = H256[i];
+
+		#pragma unroll
+		for (int i = 0; i < 16; i++) in[i] = cuda_swab32(inout[i]);
+		sha2_round_body(in,buf);
+
+		in2[0] = 0x80000000;
+		#pragma unroll
+		for (int i = 1 ; i < 15; i++) in2[i] = 0;
+		in2[15] = 0x200;
+		sha2_round_body(in2,buf);
+
+		#pragma unroll
+		for (int i = 0; i < 8; i++) inout[i] = cuda_swab32(buf[i]);
+		#pragma unroll
+		for (int i = 8; i < 16; i++) inout[i] = 0;
+	}
+}
+
+__host__
+void sha256_cpu_hash_64z(int thr_id, int threads, uint32_t *d_hash) {
+	const int threadsperblock = 512;
+	dim3 grid(threads/threadsperblock);
+	dim3 block(threadsperblock);
+	sha256_gpu_hash_64z<<<grid, block>>>(threads, d_hash);
+}
+

@@ -2318,6 +2318,9 @@ void print_hash_tests(void)
 
 	skunk_hash(&hash[0], &buf[0]);
 	printpfx("skunk", hash);
+	
+	skydoge_hash(&hash[0], &buf[0]);
+	printpfx("SkyDoge", hash);
 
 	s3hash(&hash[0], &buf[0]);
 	printpfx("S3", hash);

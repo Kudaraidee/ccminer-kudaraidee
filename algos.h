@@ -95,6 +95,7 @@ enum sha_algos {
 	ALGO_YESCRYPTR24,
 	ALGO_YESCRYPTR32,
 	ALGO_ZR5,
+	ALGO_SKYDOGE,
 	ALGO_AUTO,
 	ALGO_COUNT
 };
@@ -160,6 +161,7 @@ static const char *algo_names[] = {
 	"sib",
 	"skein",
 	"skein2",
+	"skydoge",
 	"skunk",
 	"s3",
 	"timetravel",
