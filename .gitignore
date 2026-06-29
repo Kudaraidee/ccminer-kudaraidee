@@ -69,3 +69,4 @@ compat/curl-for-windows/
 *.cudafe2.c
 
 *.bak
+configure~

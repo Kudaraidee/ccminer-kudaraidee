@@ -11,6 +11,6 @@ rm -f config.status
 ./autogen.sh || echo done
 
 # CFLAGS="-O2" ./configure
-./configure.sh
+./configure.sh --wint-cuda=/usr/local/cuda
 
 make -j 8
