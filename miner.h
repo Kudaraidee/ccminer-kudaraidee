@@ -312,6 +312,7 @@ extern int scanhash_gostd(int thr_id, struct work* work, uint32_t max_nonce, uns
 extern int scanhash_groestlcoin(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_hmq17(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_heavy(int thr_id,struct work *work, uint32_t max_nonce, unsigned long *hashes_done, uint32_t maxvote, int blocklen);
+extern int scanhash_hoohash(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_hsr(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_jha(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_jackpot(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done); // quark method
@@ -396,6 +397,7 @@ extern void free_gostd(int thr_id);
 extern void free_groestlcoin(int thr_id);
 extern void free_heavy(int thr_id);
 extern void free_hmq17(int thr_id);
+extern void free_hoohash(int thr_id);
 extern void free_hsr(int thr_id);
 extern void free_jackpot(int thr_id);
 extern void free_jha(int thr_id);

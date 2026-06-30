@@ -285,6 +285,7 @@ Options:\n\
 "			heavy       Heavycoin\n"
 #endif
 "			hmq1725		Doubloons / Espers\n\
+			hoohash		HoohashV110 (PEPEPOW)\n\
 			jackpot		JHA v8\n\
 			keccak		Deprecated Keccak-256\n\
 			keccakc		Keccak-256 (CreativeCoin)\n\
@@ -715,23 +716,23 @@ bool jobj_binary(const json_t *obj, const char *key, void *buf, size_t buflen)
 /* compute nbits to get the network diff */
 static void calc_network_diff(struct work *work)
 {
-        // ðŸš¨ RINHASH FIX: Logic tÃ­nh toÃ¡n Ä‘á»™ khÃ³ máº¡ng chÃ­nh xÃ¡c cho RinHash
+        // 🚨 RINHASH FIX: Logic tính toán độ khó mạng chính xác cho RinHash
         if (opt_algo == ALGO_RINHASH) {
-                // work->data[18] Ä‘Ã£ lÃ  Big-Endian (vÃ­ dá»¥: 0x1d0128f5)
-                // do Ä‘Ã£ Ä‘Æ°á»£c xá»­ lÃ½ trong stratum_gen_work
+                // work->data[18] đã là Big-Endian (ví dụ: 0x1d0128f5)
+                // do đã được xử lý trong stratum_gen_work
                 uint32_t nbits_be = work->data[18];
 
-                // TÃ¡ch 4 bytes cá»§a 0x1d0128f5 ra:
-                uint32_t shift = (nbits_be >> 24) & 0xff; // Láº¥y byte Ä‘áº§u (0x1d)
-                uint32_t bits = nbits_be & 0x00ffffff; // Láº¥y 3 bytes sau (0x0128f5)
+                // Tách 4 bytes của 0x1d0128f5 ra:
+                uint32_t shift = (nbits_be >> 24) & 0xff; // Lấy byte đầu (0x1d)
+                uint32_t bits = nbits_be & 0x00ffffff; // Lấy 3 bytes sau (0x0128f5)
 
-                // XÃ¡c thá»±c bits Ä‘á»ƒ trÃ¡nh chia cho 0
+                // Xác thực bits để tránh chia cho 0
                 if (bits == 0) {
-                        net_diff = 0.0; // BÃ¡o lá»—i vÃ  Ä‘áº·t net_diff = 0
+                        net_diff = 0.0; // Báo lỗi và đặt net_diff = 0
                         return;
                 }
 
-                // Sá»­ dá»¥ng cÃ´ng thá»©c chuáº©n cá»§a cpuminer
+                // Sử dụng công thức chuẩn của cpuminer
                 double d = (double)0x0000ffff / (double)bits;
 
                 for (int m=shift; m < 29; m++) d *= 256.0;
@@ -742,10 +743,10 @@ static void calc_network_diff(struct work *work)
                 if (opt_debug_diff)
                         applog(LOG_DEBUG, "net diff (RinHash): %f -> shift %u, bits %08x", d, shift, bits);
 
-                return; // ðŸš¨ QUAN TRá»ŒNG: Káº¿t thÃºc táº¡i Ä‘Ã¢y cho RinHash
+                return; // 🚨 QUAN TRỌNG: Kết thúc tại đây cho RinHash
         }
         
-        // --- Code bÃªn dÆ°á»›i chá»‰ cháº¡y cho cÃ¡c thuáº­t toÃ¡n khÃ¡c (logic cÅ©) ---
+        // --- Code bên dưới chỉ chạy cho các thuật toán khác (logic cũ) ---
 
         // sample for diff 43.281 : 1c05ea29
         // todo: endian reversed on longpoll could be zr5 specific...
@@ -1834,6 +1835,7 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 		case ALGO_ARGON2D1000:
 		case ALGO_ARGON2D16000:
 		case ALGO_HMQ1725:
+		case ALGO_HOOHASH:
 		case ALGO_JACKPOT:
 		case ALGO_JHA:
 		case ALGO_NEOSCRYPT:
@@ -1870,6 +1872,7 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 		case ALGO_EVOHASH:
 		case ALGO_RINHASH:
 		case ALGO_SKYDOGE:
+		case ALGO_SHA3D:
 			work_set_target(work, sctx->job.diff / opt_difficulty);
 			break;
 		case ALGO_KECCAK:
@@ -1879,7 +1882,6 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 		case ALGO_EQUIHASH:
 			equi_work_set_target(work, sctx->job.diff / opt_difficulty);
 			break;
-		case ALGO_SHA3D:
 		default:
 			work_set_target(work, sctx->job.diff / opt_difficulty);
 	}
@@ -2707,6 +2709,9 @@ static void *miner_thread(void *userdata)
 			break;
 		case ALGO_X11:
 			rc = scanhash_x11(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_HOOHASH:
+			rc = scanhash_hoohash(thr_id, &work, max_nonce, &hashes_done);
 			break;
 		case ALGO_SOTERG:
 			rc = scanhash_soterg(thr_id, &work, max_nonce, &hashes_done);

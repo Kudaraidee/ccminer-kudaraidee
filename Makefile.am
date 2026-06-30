@@ -43,6 +43,8 @@ ccminer_SOURCES	= elist.h miner.h compat.h \
 			  heavy/cuda_keccak512.cu heavy/cuda_keccak512.h \
 			  heavy/cuda_sha256.cu heavy/cuda_sha256.h \
 			  heavy/bastion.cu heavy/cuda_bastion.cu \
+			  hoohash/cuda_hoohashv110.cu hoohash/hoohash.cu \
+			  hoohash/hoohash_device.cuh \
 			  fuguecoin.cpp Algo256/cuda_fugue256.cu sph/fugue.c uint256.h \
 			  groestlcoin.cpp cuda_groestlcoin.cu cuda_groestlcoin.h \
 			  myriadgroestl.cpp cuda_myriadgroestl.cu \
@@ -160,6 +162,11 @@ nvcc_FLAGS += $(JANSSON_INCLUDES) --ptxas-options="-v" --std=c++14
 
 lyra2/cuda_lyra2.o: lyra2/cuda_lyra2.cu
 	$(NVCC) $(nvcc_FLAGS) --maxrregcount=128 -o $@ -c $<
+
+# HoohashV110 device TU: consensus-critical strict FP (must match the glibc oracle).
+# No fast-math; disable FMA contraction; precise div/sqrt; no flush-to-zero.
+hoohash/cuda_hoohashv110.o: hoohash/cuda_hoohashv110.cu
+	$(NVCC) $(nvcc_FLAGS) --maxrregcount=128 --fmad=false --prec-div=true --prec-sqrt=true --ftz=false -o $@ -c $<
 
 Algo256/blake256.o: Algo256/blake256.cu
 	$(NVCC) $(nvcc_FLAGS) --maxrregcount=64 -o $@ -c $<
