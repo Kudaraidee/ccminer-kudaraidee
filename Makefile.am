@@ -56,6 +56,7 @@ ccminer_SOURCES	= elist.h miner.h compat.h \
 			  Algo256/cuda_blake256.cu Algo256/cuda_groestl256.cu \
 			  Algo256/cuda_keccak256_sm3.cu Algo256/cuda_keccak256_sha3d.cu Algo256/cuda_keccak256.cu Algo256/cuda_skein256.cu \
 			  Algo256/blake256.cu Algo256/decred.cu Algo256/vanilla.cu Algo256/keccak256.cu Algo256/sha3d.cu \
+			  Algo256/cuda_sha3t.cu Algo256/sha3t.cu sph/sha3.c \
 			  Algo256/blake2s.cu sph/blake2s.c \
 			  Algo256/bmw.cu Algo256/bmw512.cu Algo256/cuda_bmw.cu \
 			  blake2b.cu \

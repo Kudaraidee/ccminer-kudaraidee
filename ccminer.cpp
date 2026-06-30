@@ -308,6 +308,7 @@ Options:\n\
 			sha256d		SHA256d (bitcoin)\n\
 			sha256t		SHA256 x3\n\
 			sha3d		Bsha3, Yilacoin and Kylacoin\n\
+			sha3t		Fjarcode and Bitcoin III\n\
 			sia		SIA (Blake2B)\n\
 			sib		Sibcoin (X11+Streebog)\n\
 			scrypt		Scrypt\n\
@@ -1691,6 +1692,7 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 		case ALGO_GOSTCOIN:
 			gostd(merkle_root, sctx->job.coinbase, (int)sctx->job.coinbase_size);
 			break;
+		case ALGO_SHA3T:
 		case ALGO_WHIRLPOOL:
 		default:
 			sha256d(merkle_root, sctx->job.coinbase, (int)sctx->job.coinbase_size);
@@ -2666,6 +2668,9 @@ static void *miner_thread(void *userdata)
 			break;
 		case ALGO_SHA3D:
 			rc = scanhash_sha3d(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_SHA3T:
+			rc = scanhash_sha3t(thr_id, &work, max_nonce, &hashes_done);
 			break;
 		case ALGO_SIA:
 			rc = scanhash_sia(thr_id, &work, max_nonce, &hashes_done);
