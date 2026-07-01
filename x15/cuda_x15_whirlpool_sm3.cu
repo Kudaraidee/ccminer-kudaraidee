@@ -2111,7 +2111,7 @@ void x15_whirlpool_gpu_hash_64(uint32_t threads, uint32_t startNounce, uint64_t 
 			sharedMemory[threadIdx.x+1792] = mixTob7Tox[threadIdx.x];
 		#endif
 	}
-	__threadfence_block(); // ensure shared mem is ready
+	__syncthreads(); // barrier: shared AES table filled cooperatively (threads <128)
 
 	uint32_t thread = (blockDim.x * blockIdx.x + threadIdx.x);
 	if (thread < threads)
@@ -2189,7 +2189,7 @@ void oldwhirlpool_gpu_finalhash_64(uint32_t threads, uint32_t startNounce, uint6
 			sharedMemory[threadIdx.x+1792] = mixTob7Tox[threadIdx.x];
 		#endif
 	}
-	__threadfence_block(); // ensure shared mem is ready
+	__syncthreads(); // barrier: shared AES table filled cooperatively (threads <128)
 
 	uint32_t thread = (blockDim.x * blockIdx.x + threadIdx.x);
 	if (thread < threads)
