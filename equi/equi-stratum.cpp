@@ -128,6 +128,20 @@ bool equi_stratum_notify(struct stratum_ctx *sctx, json_t *params)
 	nbits = json_string_value(json_array_get(params, p++));
 	clean = json_is_true(json_array_get(params, p)); p++;
 
+	// zpool / cpuminer-opt equihash extension: optional trailing "<n>_<k>" and
+	// 8-char personalization. When present these are AUTHORITATIVE — the solver
+	// must hash with the personalization the pool validates against (e.g. a
+	// 144/5 pool advertising "ZcashPoW"). Absent -> keep the -a/env default.
+	{
+		const char *eqp = json_string_value(json_array_get(params, p++));
+		const char *eqpers = json_string_value(json_array_get(params, p++));
+		if (eqp && eqpers) {
+			int wn = 0, wk = 0;
+			if (sscanf(eqp, "%d_%d", &wn, &wk) == 2)
+				eq_set_variant_params(wn, wk, eqpers);
+		}
+	}
+
 	if (!job_id || !prevhash || !coinb1 || !coinb2 || !version || !nbits || !stime ||
 	    strlen(prevhash) != 64 || strlen(version) != 8 ||
 	    strlen(coinb1) != 64 || strlen(coinb2) != 64 ||
@@ -222,7 +236,7 @@ bool equi_stratum_show_message(struct stratum_ctx *sctx, json_t *id, json_t *par
 void equi_store_work_solution(struct work* work, uint32_t* hash, void* sol_data)
 {
 	int nonce = work->valid_nonces-1;
-	memcpy(work->extra, sol_data, 1347);
+	memcpy(work->extra, sol_data, eq_variant_storelen());
 	bn_store_hash_target_ratio(hash, work->target, work, nonce);
 	//work->sharediff[nonce] = target_to_diff_equi(hash);
 }
@@ -248,7 +262,7 @@ bool equi_stratum_submit(struct pool_infos *pool, struct work *work)
 		applog(LOG_ERR, "unable to alloc share memory");
 		return false;
 	}
-	cbin2hex(solhex, (const char*) work->extra, 1347);
+	cbin2hex(solhex, (const char*) work->extra, eq_variant_storelen());
 
 	jobid = work->job_id + 8;
 	sprintf(timehex, "%08x", swab32(work->data[25]));

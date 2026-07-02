@@ -2065,7 +2065,11 @@ static void *miner_thread(void *userdata)
 			wcmplen = 39;
 		} else if (opt_algo == ALGO_EQUIHASH) {
 			nonceptr = &work.data[EQNONCE_OFFSET]; // 27 is pool extranonce (256bits nonce space)
-			wcmplen = 4+32+32;
+			// 108 = version+prevhash+merkle+hashReserved+nTime+nBits, i.e. the whole header up
+			// to the 256-bit nonce space (data[27..34]). The old 68 only compared
+			// version+prevhash+merkle, so new jobs that changed hashReserved/nTime/nBits were
+			// seen as "same work" and the miner kept grinding stale data.
+			wcmplen = 4+32+32+32+4+4;
 		}
 
 		if (have_stratum) {
@@ -2783,8 +2787,11 @@ static void *miner_thread(void *userdata)
 		case ALGO_GHOSTRIDER:
 			rc = scanhash_ghostrider(thr_id, &work, max_nonce, &hashes_done);
 			break;
-
-
+		
+		case ALGO_EQUIHASH:
+			rc = scanhash_equihash(thr_id, &work, max_nonce, &hashes_done);
+			break;
+			
 		default:
 			/* should never happen */
 			goto out;
@@ -3356,6 +3363,12 @@ void parse_arg(int key, char *arg)
 			applog(LOG_ERR, "Unknown algo parameter '%s'", arg);
 			show_usage_and_exit(1);
 		}
+		
+		// equihash 144/5 shares ALGO_EQUIHASH but needs the (n,k) +
+		// personalization variant selected; the alias name carries that intent.
+		if (opt_algo == ALGO_EQUIHASH &&
+		    (!strcasecmp("equihash144", arg) || !strcasecmp("equihash144_5", arg)))
+			eq_set_variant_144();
 
 		if (p) {
 			opt_nfactor = atoi(p + 1);

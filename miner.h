@@ -364,6 +364,7 @@ extern int scanhash_x17(int thr_id, struct work* work, uint32_t max_nonce, unsig
 extern int scanhash_x21s(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_zr5(int thr_id, struct work *work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_ghostrider(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern int scanhash_equihash(int thr_id, struct work *work, uint32_t max_nonce, unsigned long *hashes_done);
 
 extern int scanhash_yescrypt(int thr_id, struct work* work, uint32_t max_nonce, unsigned long* hashes_done);
 extern int scanhash_yescryptr8(int thr_id, struct work* work, uint32_t max_nonce, unsigned long* hashes_done);
@@ -448,6 +449,7 @@ extern void free_x17(int thr_id);
 extern void free_x21s(int thr_id);
 extern void free_zr5(int thr_id);
 extern void free_ghostrider(int thr_id);
+extern void free_equihash(int thr_id);
 /* api related */
 void *api_thread(void *userdata);
 void api_set_throughput(int thr_id, uint32_t throughput);
@@ -883,6 +885,10 @@ bool equi_stratum_show_message(struct stratum_ctx *sctx, json_t *id, json_t *par
 void equi_work_set_target(struct work* work, double diff);
 void equi_store_work_solution(struct work* work, uint32_t* hash, void* sol_data);
 int equi_verify_sol(void * const hdr, void * const sol);
+int eq_variant_storelen(void); // bytes in work->extra to submit (compactSize+solution)
+int eq_variant_wk(void);       // active equihash k (9 for 200/9, 5 for 144/5)
+void eq_set_variant_144(void); // select 144/5 (BitcoinZ) variant (from -a alias)
+void eq_set_variant_params(int wn, int wk, const char* personal); // pool notify: adopt personal; (n,k) validate-only (fixed by -a)
 double equi_network_diff(struct work *work);
 
 void hashlog_remember_submit(struct work* work, uint32_t nonce);

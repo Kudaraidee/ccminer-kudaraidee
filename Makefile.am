@@ -30,6 +30,7 @@ ccminer_SOURCES	= elist.h miner.h compat.h \
 			  argon2d/argon2ref/encoding.c \
 			  argon2d/argon2d.cu argon2d/argon2d_fill.cu argon2d/blake2b_kernels.cu argon2d/argon2d_kernel.h\
 			  equi/equi-stratum.cpp equi/equi.cpp equi/blake2/blake2bx.cpp \
+			  equi/equihash.cpp equi/cuda_equi.cu equi/cuda_equi_tromp.cu \
 			  allium.cu \
 			  heavyhash/heavyhash.cu \
 			  heavyhash/cuda_heavyhash.cu \

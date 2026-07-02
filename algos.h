@@ -270,7 +270,9 @@ static inline int algo_to_int(char* arg)
 		else if (!strcasecmp("neoscrypt-xaya", arg))
 			i = ALGO_XAYA;
 		else if (!strcasecmp("rinhash", arg))
-			i = ALGO_RINHASH;			
+			i = ALGO_RINHASH;
+		else if (!strcasecmp("equihash144", arg) || !strcasecmp("equihash144_5", arg))
+			i = ALGO_EQUIHASH; // 144/5 variant; the (n,k)+personalization is set in parse_arg 'a'
 		else
 			i = -1;
 	}

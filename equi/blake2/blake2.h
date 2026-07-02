@@ -37,7 +37,7 @@ extern "C" {
   };
 
 #pragma pack(push, 1)
-typedef struct __blake2b_param
+  typedef struct __blake2b_param
   {
     uint8_t  digest_length; // 1
     uint8_t  key_length;    // 2
@@ -52,7 +52,7 @@ typedef struct __blake2b_param
     uint8_t  personal[BLAKE2B_PERSONALBYTES];  // 64
   } blake2b_param;
 
-typedef struct __blake2b_state
+  ALIGN( 64 ) typedef struct __blake2b_state
   {
     uint64_t h[8];
     uint8_t  buf[BLAKE2B_BLOCKBYTES];
@@ -82,3 +82,4 @@ typedef struct __blake2b_state
 #endif
 
 #endif
+
