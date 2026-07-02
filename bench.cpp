@@ -68,6 +68,7 @@ void algo_free_all(int thr_id)
 	free_keccak256(thr_id);
 	free_fresh(thr_id);
 	free_fugue256(thr_id);
+	free_ghostrider(thr_id);
 	free_groestlcoin(thr_id);
 #ifdef WITH_HEAVY_ALGO
 	free_heavy(thr_id);

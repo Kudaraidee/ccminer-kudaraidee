@@ -245,3 +245,127 @@ void cryptonight_extra_cpu_free(int thr_id)
 		d_input[thr_id] = NULL;
 	}
 }
+
+// ===========================================================================
+// GhostRider CryptoNight-v1 prepare / finalize.
+//
+// Unlike the Monero path, the input is a 64-byte per-thread core hash already
+// resident in d_hash (no header/nonce), and the 32-byte result is written back
+// into d_hash so the next core round can consume it. prepare also derives the
+// per-thread cnv1 tweak (load64(in+35) ^ keccak state word 24). final runs the
+// keccak permutation + the selected extra hash; for the first two CN rounds the
+// upper 32 bytes of the 64-byte slot are zeroed (matching the CPU reference).
+// ===========================================================================
+
+// Keccak-1600 (original padding) specialised for a 64-byte input.
+__device__ __forceinline__
+void cn_keccak64(const uint8_t * __restrict__ in, uint8_t * __restrict__ md)
+{
+	uint64_t st[25];
+	MEMCPY8(st, in, 8);              // 64 bytes
+	MEMSET8(&st[8], 0x00, 17);       // zero st[8..24]
+	st[8]  = 0x0000000000000001ULL;  // pad byte 0x01 at offset 64
+	st[16] = 0x8000000000000000ULL;  // final bit at offset 135 (rate = 136)
+	cn_keccakf(st);
+	MEMCPY8(md, st, 25);
+}
+
+__global__
+void cryptonight_extra_gpu_prepare_gr(const uint32_t threads, const uint64_t * __restrict__ d_hash,
+	uint64_t * d_ctx_state, uint32_t * __restrict__ d_ctx_a, uint32_t * __restrict__ d_ctx_b,
+	uint32_t * __restrict__ d_ctx_key1, uint32_t * __restrict__ d_ctx_key2, uint64_t * d_ctx_tweak)
+{
+	const uint32_t thread = (blockDim.x * blockIdx.x + threadIdx.x);
+
+	if (thread < threads)
+	{
+		uint32_t ctx_state[50];
+		uint32_t ctx_a[4];
+		uint32_t ctx_b[4];
+		uint32_t ctx_key1[40];
+		uint32_t ctx_key2[40];
+		uint64_t input[8]; // 64-byte core hash
+
+		MEMCPY8(input, &d_hash[thread * 8U], 8);
+
+		cn_keccak64((uint8_t *)input, (uint8_t *)ctx_state);
+		cryptonight_aes_set_key(ctx_key1, ctx_state);
+		cryptonight_aes_set_key(ctx_key2, ctx_state + 8);
+		XOR_BLOCKS_DST(ctx_state, ctx_state + 8, ctx_a);
+		XOR_BLOCKS_DST(ctx_state + 4, ctx_state + 12, ctx_b);
+
+		// cnv1 tweak: load64(input + 35) ^ keccak state word 24 (bytes 192..199)
+		const uint32_t tlo = *((uint32_t *)(((char *)input) + 35));
+		const uint32_t thi = *((uint32_t *)(((char *)input) + 39));
+		const uint64_t tweak = (((uint64_t)thi << 32) | tlo) ^ ((uint64_t *)ctx_state)[24];
+
+		MEMCPY8(&d_ctx_state[thread * 26], ctx_state, 25);
+		MEMCPY4(d_ctx_a + thread * 4, ctx_a, 4);
+		MEMCPY4(d_ctx_b + thread * 4, ctx_b, 4);
+		MEMCPY4(d_ctx_key1 + thread * 40, ctx_key1, 40);
+		MEMCPY4(d_ctx_key2 + thread * 40, ctx_key2, 40);
+		d_ctx_tweak[thread] = tweak;
+	}
+}
+
+__global__
+void cryptonight_extra_gpu_final_gr(const uint32_t threads, uint32_t * d_ctx_state, uint64_t * d_hash,
+	const uint32_t zero_high)
+{
+	const uint32_t thread = (blockDim.x * blockIdx.x + threadIdx.x);
+	if (thread < threads)
+	{
+		uint64_t* ctx_state = (uint64_t*) (&d_ctx_state[thread * 52U]);
+		uint64_t state[25];
+		#pragma unroll
+		for (int i = 0; i < 25; i++)
+			state[i] = ctx_state[i];
+
+		cn_keccakf2(state);
+
+		uint32_t hash[8];
+		switch (((uint8_t*)state)[0] & 0x03)
+		{
+			case 0:  cn_blake((uint8_t*)state, 200, (uint8_t*)hash); break;
+			case 1:  cn_groestl((BitSequence*)state, 200, (BitSequence*)hash); break;
+			case 2:  cn_jh256((uint8_t*)state, 200, hash); break;
+			default: cn_skein((uint8_t*)state, 200, hash); break;
+		}
+
+		uint32_t* out = (uint32_t*)(&d_hash[thread * 8U]);
+		#pragma unroll
+		for (int i = 0; i < 8; i++)
+			out[i] = hash[i];
+
+		if (zero_high) {
+			uint64_t* outh = &d_hash[thread * 8U];
+			outh[4] = 0; outh[5] = 0; outh[6] = 0; outh[7] = 0;
+		}
+	}
+}
+
+extern "C" __host__
+void cryptonight_extra_cpu_prepare_gr(int thr_id, uint32_t threads, uint64_t *d_hash,
+	uint64_t *d_ctx_state, uint32_t *d_ctx_a, uint32_t *d_ctx_b,
+	uint32_t *d_ctx_key1, uint32_t *d_ctx_key2, uint64_t *d_ctx_tweak)
+{
+	uint32_t threadsperblock = 128;
+	dim3 grid((threads + threadsperblock - 1) / threadsperblock);
+	dim3 block(threadsperblock);
+
+	cryptonight_extra_gpu_prepare_gr <<<grid, block>>> (threads, d_hash, d_ctx_state, d_ctx_a, d_ctx_b,
+		d_ctx_key1, d_ctx_key2, d_ctx_tweak);
+	exit_if_cudaerror(thr_id, __FUNCTION__, __LINE__);
+}
+
+extern "C" __host__
+void cryptonight_extra_cpu_final_gr(int thr_id, uint32_t threads, uint64_t *d_ctx_state, uint64_t *d_hash,
+	int zero_high)
+{
+	uint32_t threadsperblock = 128;
+	dim3 grid((threads + threadsperblock - 1) / threadsperblock);
+	dim3 block(threadsperblock);
+
+	cryptonight_extra_gpu_final_gr <<<grid, block>>> (threads, (uint32_t*)d_ctx_state, d_hash, (uint32_t)zero_high);
+	exit_if_cudaerror(thr_id, __FUNCTION__, __LINE__);
+}

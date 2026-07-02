@@ -228,6 +228,7 @@ int opt_statsavg = 30;
 // strdup on char* to allow a common free() if used
 static char* opt_syslog_pfx = strdup(PROGRAM_NAME);
 char *opt_api_bind = strdup("127.0.0.1"); /* 0.0.0.0 for all ips */
+char *opt_user_agent = NULL; /* overrides the default USER_AGENT sent to the pool */
 int opt_api_port = 4068; /* 0 to disable */
 char *opt_api_allow = NULL;
 char *opt_api_groups = NULL;
@@ -279,6 +280,7 @@ Options:\n\
 			dmd-gr		Diamond-Groestl\n\
 			fresh		Freshcoin (shavite 80)\n\
 			fugue256	Fuguecoin\n\
+			ghostrider	GhostRider (Raptoreum)\n\
 			gostcoin	Double GOST R 34.11\n\
 			groestl		Groestlcoin\n"
 #ifdef WITH_HEAVY_ALGO
@@ -389,6 +391,7 @@ Options:\n\
       --cpu-affinity    set process affinity to cpu core(s), mask 0x3 for cores 0 and 1\n\
       --cpu-priority    set process priority (default: 3) 0 idle, 2 normal to 5 highest\n\
   -b, --api-bind=port   IP:port for the miner API (default: 127.0.0.1:4068), 0 disabled\n\
+      --user-agent=NAME override the miner name sent to the pool (default: " USER_AGENT ")\n\
       --api-remote      Allow remote control, like pool switching, imply --api-allow=0/0\n\
       --api-allow=...   IP/mask of the allowed api client(s), 0/0 for all\n\
       --max-temp=N      Only mine if gpu temp is less than specified value\n\
@@ -525,6 +528,7 @@ struct option options[] = {
 	{ "segwit", 0, NULL, 1083 },
 	{ "yescrypt-param", 1, NULL, 1084 },
 	{ "yescrypt-key", 1, NULL, 1085 },
+	{ "user-agent", 1, NULL, 1086 },
 	{ 0, 0, 0, 0 }
 };
 
@@ -717,23 +721,23 @@ bool jobj_binary(const json_t *obj, const char *key, void *buf, size_t buflen)
 /* compute nbits to get the network diff */
 static void calc_network_diff(struct work *work)
 {
-        // 🚨 RINHASH FIX: Logic tính toán độ khó mạng chính xác cho RinHash
+        // ðŸš¨ RINHASH FIX: Logic tÃ­nh toÃ¡n Ä‘á»™ khÃ³ máº¡ng chÃ­nh xÃ¡c cho RinHash
         if (opt_algo == ALGO_RINHASH) {
-                // work->data[18] đã là Big-Endian (ví dụ: 0x1d0128f5)
-                // do đã được xử lý trong stratum_gen_work
+                // work->data[18] Ä‘Ã£ lÃ  Big-Endian (vÃ­ dá»¥: 0x1d0128f5)
+                // do Ä‘Ã£ Ä‘Æ°á»£c xá»­ lÃ½ trong stratum_gen_work
                 uint32_t nbits_be = work->data[18];
 
-                // Tách 4 bytes của 0x1d0128f5 ra:
-                uint32_t shift = (nbits_be >> 24) & 0xff; // Lấy byte đầu (0x1d)
-                uint32_t bits = nbits_be & 0x00ffffff; // Lấy 3 bytes sau (0x0128f5)
+                // TÃ¡ch 4 bytes cá»§a 0x1d0128f5 ra:
+                uint32_t shift = (nbits_be >> 24) & 0xff; // Láº¥y byte Ä‘áº§u (0x1d)
+                uint32_t bits = nbits_be & 0x00ffffff; // Láº¥y 3 bytes sau (0x0128f5)
 
-                // Xác thực bits để tránh chia cho 0
+                // XÃ¡c thá»±c bits Ä‘á»ƒ trÃ¡nh chia cho 0
                 if (bits == 0) {
-                        net_diff = 0.0; // Báo lỗi và đặt net_diff = 0
+                        net_diff = 0.0; // BÃ¡o lá»—i vÃ  Ä‘áº·t net_diff = 0
                         return;
                 }
 
-                // Sử dụng công thức chuẩn của cpuminer
+                // Sá»­ dá»¥ng cÃ´ng thá»©c chuáº©n cá»§a cpuminer
                 double d = (double)0x0000ffff / (double)bits;
 
                 for (int m=shift; m < 29; m++) d *= 256.0;
@@ -744,10 +748,10 @@ static void calc_network_diff(struct work *work)
                 if (opt_debug_diff)
                         applog(LOG_DEBUG, "net diff (RinHash): %f -> shift %u, bits %08x", d, shift, bits);
 
-                return; // 🚨 QUAN TRỌNG: Kết thúc tại đây cho RinHash
+                return; // ðŸš¨ QUAN TRá»ŒNG: Káº¿t thÃºc táº¡i Ä‘Ã¢y cho RinHash
         }
         
-        // --- Code bên dưới chỉ chạy cho các thuật toán khác (logic cũ) ---
+        // --- Code bÃªn dÆ°á»›i chá»‰ cháº¡y cho cÃ¡c thuáº­t toÃ¡n khÃ¡c (logic cÅ©) ---
 
         // sample for diff 43.281 : 1c05ea29
         // todo: endian reversed on longpoll could be zr5 specific...
@@ -1836,6 +1840,7 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 	switch (opt_algo) {
 		case ALGO_ARGON2D1000:
 		case ALGO_ARGON2D16000:
+		case ALGO_GHOSTRIDER:
 		case ALGO_HMQ1725:
 		case ALGO_HOOHASH:
 		case ALGO_JACKPOT:
@@ -1920,7 +1925,7 @@ static bool wanna_mine(int thr_id)
 		float temp = gpu_temp(cgpu);
 		if (temp > opt_max_temp) {
 			if (!conditional_state[thr_id] && !opt_quiet)
-				gpulog(LOG_INFO, thr_id, "temperature too high (%.0fÂ°c), waiting...", temp);
+				gpulog(LOG_INFO, thr_id, "temperature too high (%.0fÃ‚Â°c), waiting...", temp);
 			state = false;
 		} else if (opt_max_temp > 0. && opt_resume_temp > 0. && conditional_state[thr_id] && temp > opt_resume_temp) {
 			if (!thr_id && opt_debug)
@@ -2773,6 +2778,10 @@ static void *miner_thread(void *userdata)
 
 		case ALGO_YESCRYPTR32:
 			rc = scanhash_yescryptr32(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		
+		case ALGO_GHOSTRIDER:
+			rc = scanhash_ghostrider(thr_id, &work, max_nonce, &hashes_done);
 			break;
 
 
@@ -3827,6 +3836,12 @@ void parse_arg(int key, char *arg)
 	case 1015:
 		opt_submit_stale = true;
 		break;
+	case 1087: /* --user-agent */
+		if (arg && strlen(arg)) {
+			free(opt_user_agent);
+			opt_user_agent = strdup(arg);
+		}
+		break;
 	case 'S':
 	case 1018:
 		applog(LOG_INFO, "Now logging to syslog...");
@@ -3967,10 +3982,10 @@ void parse_arg(int key, char *arg)
 	case 1199:
 		pool_set_attr(cur_pooln, "disabled", arg);
 		break;
-	case 1200: // ðŸš€ THÃŠM CASE NÃ€Y
+	case 1200: // Ã°Å¸Å¡â‚¬ THÃƒÅ M CASE NÃƒâ‚¬Y
     opt_batch_size = (uint32_t)atoi(arg);
     if (opt_batch_size < 32768 && opt_batch_size != 0) {
-         applog(LOG_WARNING, "Batch size quÃ¡ nhá», Ä‘áº·t vá» máº·c Ä‘á»‹nh.");
+         applog(LOG_WARNING, "Batch size quÃƒÂ¡ nhÃ¡Â»Â, Ã„â€˜Ã¡ÂºÂ·t vÃ¡Â»Â mÃ¡ÂºÂ·c Ã„â€˜Ã¡Â»â€¹nh.");
          opt_batch_size = 0;
     }
 		break;

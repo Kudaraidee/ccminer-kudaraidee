@@ -190,7 +190,7 @@ void x16_echo512_gpu_hash_80(uint32_t threads, uint32_t startNonce, uint64_t *g_
 	__shared__ uint32_t sharedMemory[1024];
 
 	echo_gpu_init(sharedMemory);
-	__threadfence_block();
+	__syncthreads(); // barrier: shared AES table filled cooperatively
 
 	const uint32_t thread = (blockDim.x * blockIdx.x + threadIdx.x);
 	if (thread < threads)
