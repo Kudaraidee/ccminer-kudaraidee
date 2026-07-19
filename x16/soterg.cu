@@ -1,5 +1,5 @@
 /**
- * X12R algorithm
+ * soterg algorithm
  */
 
 #include <stdio.h>
@@ -84,6 +84,7 @@ static inline int GetHashSelection(const uint32_t* prevblock, int index)
     
     int pos = START + (index & MASK);
     int pos_rev = 63 - pos;
+//    int nibble = (pos_rev & 1) ? (data[pos_rev >> 1] & 0xF) : (data[pos_rev >> 1] >> 4);
     int nibble = GetNibble(data, pos);
     
     // Fast path: 75-85% of cases
@@ -124,6 +125,7 @@ static void getprevblock(const uint32_t timeStamp, void* prevblock)
     sha256d((unsigned char*)prevblock, (const unsigned char*)&(maskedTime), sizeof(maskedTime));
 }
 
+// soterg CPU Hash (Validation)
 extern "C" void soterg_hash(void *output, const void *input)
 {
     unsigned char _ALIGN(64) hash[128];
@@ -228,7 +230,7 @@ static bool init[MAX_GPUS] = { 0 };
 static bool use_compat_kernels[MAX_GPUS] = { 0 };
 
 //#define _DEBUG
-#define _DEBUG_PREFIX "x12r-"
+#define _DEBUG_PREFIX "soterg-"
 #include "cuda_debug.cuh"
 
 static void init_soterg(const int thr_id, const int dev_id)
@@ -299,6 +301,7 @@ extern "C" int scanhash_soterg(int thr_id, struct work* work, uint32_t max_nonce
     static uint32_t _ALIGN(64) prevblock[8];
 
     uint32_t ntime = swab32(pdata[17]);
+//    memcpy(&ntime, pdata + 68, sizeof(uint32_t));
 
     if (s_ntime != ntime)
     {
@@ -348,7 +351,7 @@ extern "C" int scanhash_soterg(int thr_id, struct work* work, uint32_t max_nonce
             jh512_setBlock_80(thr_id, endiandata);
             break;
 		case SHABAL:
-        	x16_shabal512_setBlock_80((void*)endiandata);
+			x16_shabal512_setBlock_80((void*)endiandata);
 			break;
         case GROESTL:
             groestl512_setBlock_80(thr_id, endiandata);
@@ -384,10 +387,10 @@ extern "C" int scanhash_soterg(int thr_id, struct work* work, uint32_t max_nonce
                 skein512_cpu_hash_80(thr_id, throughput, pdata[19], d_hash[thr_id], 1); order++;
                 TRACE("skein80:");
                 break;
-			case LUFFA:
-				qubit_luffa512_cpu_hash_80(thr_id, throughput, pdata[19], d_hash[thr_id], order++);
-				TRACE("luffa80:");
-				break;
+	   case LUFFA:
+		qubit_luffa512_cpu_hash_80(thr_id, throughput, pdata[19], d_hash[thr_id], order++);
+		TRACE("luffa80:");
+		break;
             case CUBEHASH:
                 cubehash512_cuda_hash_80(thr_id, throughput, pdata[19], d_hash[thr_id]); order++;
                 TRACE("cube 80:");
@@ -408,7 +411,7 @@ extern "C" int scanhash_soterg(int thr_id, struct work* work, uint32_t max_nonce
                 jh512_cuda_hash_80(thr_id, throughput, pdata[19], d_hash[thr_id]); order++;
                 TRACE("jh51280:");
                 break;
-			case SHABAL:
+		   case SHABAL:
 				x16_shabal512_cuda_hash_80(thr_id, throughput, pdata[19], d_hash[thr_id]); order++;
 				TRACE("shabal :");
 				break;	
