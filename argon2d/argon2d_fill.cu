@@ -360,14 +360,14 @@ struct ref {
 
 __device__ void argon2_core(
         struct block_g *memory, struct block_g *mem_curr,
-        struct block_th *prev, struct block_th *tmp,struct block_g c[8][6],
+        struct block_th *prev, struct block_th *tmp,struct block_g *c,
         uint32_t lanes, uint32_t thread, uint32_t pass,
-        uint32_t ref_index, uint32_t ref_lane,uint32_t curr_index,uint32_t lane,bool last_col)
+        uint32_t ref_index, uint32_t ref_lane,uint32_t curr_index,uint32_t lane)
 {
     struct block_g *mem_ref = memory + ref_index * lanes + ref_lane;
 
     if (ref_index<8 && ref_index > 1){
-        shared_load_block_xor(prev, &c[ref_lane][ref_index-2], thread);
+        shared_load_block_xor(prev, &c[ref_lane * ARGON2_SHARED_BLOCKS_PER_LANE + ref_index-2], thread);
     }else{
         load_block_xor(prev, mem_ref, thread);
     }
@@ -378,11 +378,15 @@ __device__ void argon2_core(
 
     xor_block(prev, tmp);
 
-    if (last_col){
-        shared_store_block(&c[lane][0], prev, thread);
-    }
-    else if(curr_index<8 && curr_index >1){
-        shared_store_block(&c[lane][curr_index-2], prev, thread);
+    /* Columns 2..7 live in the shared cache (their global slots are never
+     * read); everything else, including the last column, goes to global.
+     * The last column must NOT be staged into shared: its natural slot
+     * aliases the column-2 cache entry, and other lanes may still legally
+     * ref column 2 within the final slice (no barrier until slice end) —
+     * overwriting it early made those refs read the final block instead
+     * (rare wrong hashes, caught by the host re-verify since the donor). */
+    if(curr_index<8 && curr_index >1){
+        shared_store_block(&c[lane * ARGON2_SHARED_BLOCKS_PER_LANE + curr_index-2], prev, thread);
     }else{
         store_block(mem_curr, prev, thread);
     }
@@ -391,10 +395,10 @@ __device__ void argon2_core(
 
 __device__ void argon2_step(
         struct block_g *memory, struct block_g *mem_curr,
-        struct block_th *prev, struct block_th *tmp, struct block_g c[8][6],
+        struct block_th *prev, struct block_th *tmp, struct block_g *c,
         uint32_t lanes, uint32_t segment_blocks, uint32_t thread,
         uint32_t *thread_input, uint32_t lane, uint32_t pass, uint32_t slice,
-        uint32_t offset,bool last_col)
+        uint32_t offset)
 {
     uint32_t ref_index, ref_lane;
 
@@ -407,7 +411,7 @@ __device__ void argon2_step(
 
     compute_ref_pos(lanes, segment_blocks, pass, lane, slice, offset, &ref_lane, &ref_index);
 
-    argon2_core(memory, mem_curr, prev, tmp,c, lanes, thread, pass, ref_index, ref_lane,slice*segment_blocks+offset,lane, last_col);
+    argon2_core(memory, mem_curr, prev, tmp,c, lanes, thread, pass, ref_index, ref_lane,slice*segment_blocks+offset,lane);
 }
 
 
@@ -426,7 +430,8 @@ __global__ void argon2_fill(
 
     struct block_th prev, tmp;
 
-    __shared__ block_g c[8][6];
+    /* lanes * ARGON2_SHARED_BLOCKS_PER_LANE blocks, sized at launch. */
+    extern __shared__ block_g c[];
 
     uint32_t thread_input;
 
@@ -439,8 +444,6 @@ __global__ void argon2_fill(
 
     load_block(&prev, mem_prev, thread);
 
-    bool last_col=false;
-
     uint32_t skip = 2;
     for (uint32_t pass = 0; pass < passes; ++pass) {
         for (uint32_t slice = 0; slice < ARGON2_SYNC_POINTS; ++slice) {
@@ -450,11 +453,10 @@ __global__ void argon2_fill(
                     continue;
                 }
 
-                last_col = (pass==passes-1) && (slice==ARGON2_SYNC_POINTS-1) && (offset==segment_blocks-1);
                 argon2_step(
                             memory, mem_curr, &prev, &tmp,c,lanes,
                             segment_blocks, thread, &thread_input, lane, pass,
-                            slice, offset,last_col);
+                            slice, offset);
 
                 mem_curr += lanes;
             }
@@ -469,13 +471,21 @@ __global__ void argon2_fill(
 
     __syncthreads();
 
+    /* Final block = XOR of each lane's last-column block, read from global
+     * (__syncthreads() above orders the stores block-wide) and written into
+     * the job's block 0 where argon2_finalize reads it. The block has
+     * lanes*32 threads for 256 output words, so stride-loop for lanes < 8
+     * (e.g. lanes=1 has 32 threads covering 8 words each). */
     thread=threadIdx.x + blockDim.x * threadIdx.y;
-    uint32_t* shared_col=(uint32_t*)&c[0][0];
-    uint32_t buf = 0;
+    uint32_t* last_col = (uint32_t*)(memory + (size_t)(lane_blocks - 1) * lanes);
 
-    for (uint32_t i=0; i<8; i++){
-        buf ^= shared_col[thread+i*256*6];
+    for (uint32_t j = thread; j < 256; j += blockDim.x * blockDim.y) {
+        uint32_t buf = 0;
+
+        for (uint32_t i=0; i<lanes; i++){
+            buf ^= last_col[j + i*256];
+        }
+
+        ((uint32_t*)memory)[j] = buf;
     }
-
-    ((uint32_t*)memory)[thread] = buf;
 }

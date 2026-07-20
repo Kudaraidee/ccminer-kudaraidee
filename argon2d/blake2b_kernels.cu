@@ -187,7 +187,8 @@ __device__ void blake2b_compress_4w(
 
 __device__ void computeInitialHash(
     const uint32_t* input, uint32_t* buffer,
-    uint32_t nonce)
+    uint32_t nonce, uint32_t mcost, uint32_t lanes, uint32_t passes,
+    uint32_t version)
 {
 
     uint64x8 state;
@@ -205,11 +206,11 @@ __device__ void computeInitialHash(
     state.s6 = blake2b_Init[6];
     state.s7 = blake2b_Init[7];
 
-    buffer[0] = ALGO_LANES;
+    buffer[0] = lanes;
     buffer[1] = ALGO_OUTLEN;
-    buffer[2] = ALGO_MCOST;
-    buffer[3] = ALGO_PASSES;
-    buffer[4] = ALGO_VERSION;
+    buffer[2] = mcost;
+    buffer[3] = passes;
+    buffer[4] = version;
     buffer[6] = 80;
 
 #pragma unroll
@@ -247,13 +248,14 @@ __device__ void computeInitialHash(
 
 }
 
-__device__ void fillFirstBlock(struct block* memory, uint32_t* buffer) {
+__device__ void fillFirstBlock(struct block* memory, uint32_t* buffer,
+    uint32_t lanes, uint32_t total_blocks) {
 
-    uint32_t row = threadIdx.x / ALGO_LANES;
-    uint32_t column = threadIdx.x % ALGO_LANES;
+    uint32_t row = threadIdx.x / lanes;
+    uint32_t column = threadIdx.x % lanes;
 
-    struct block* memCell = (memory + (blockIdx.x * blockDim.y + threadIdx.y) * ALGO_TOTAL_BLOCKS)
-                            + row * ALGO_LANES + column;
+    struct block* memCell = (memory + (blockIdx.x * blockDim.y + threadIdx.y) * total_blocks)
+                            + row * lanes + column;
 
     uint64_t* buffer_64 = (uint64_t*) buffer;
     uint64x8 state;
@@ -327,20 +329,23 @@ __device__ void fillFirstBlock(struct block* memory, uint32_t* buffer) {
 
 }
 
-__global__ void argon2_initialize(struct block* memory, uint32_t startNonce)
+__global__ void argon2_initialize(struct block* memory, uint32_t startNonce,
+    uint32_t mcost, uint32_t lanes, uint32_t passes, uint32_t version,
+    uint32_t total_blocks)
 {
 
     uint32_t buffer[32];
     const uint32_t nonce = (blockIdx.x*blockDim.y+threadIdx.y) + startNonce;
 
-    computeInitialHash(d_data, buffer, nonce);
-    fillFirstBlock(memory, buffer);
+    computeInitialHash(d_data, buffer, nonce, mcost, lanes, passes, version);
+    fillFirstBlock(memory, buffer, lanes, total_blocks);
 
 }
 
 __global__ void argon2_finalize(
     block* memory, uint32_t startNonce,
-    uint32_t target, uint32_t* resNonces)
+    uint32_t target, uint32_t* resNonces,
+    uint32_t total_blocks)
 {
 
     extern __shared__ uint32_t input_t[];
@@ -351,7 +356,7 @@ __global__ void argon2_finalize(
     uint32_t jobId = blockIdx.x * blockDim.y + threadIdx.y;
     uint32_t nonce = jobId + startNonce;
 
-    uint32_t* memLane = (uint32_t*) ((memory + jobId * ALGO_TOTAL_BLOCKS));
+    uint32_t* memLane = (uint32_t*) ((memory + jobId * total_blocks));
     partialState state;
 
     load_block(&input[1], memLane, idx);

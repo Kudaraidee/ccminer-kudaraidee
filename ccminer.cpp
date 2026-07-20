@@ -258,7 +258,9 @@ Options:\n\
   -a, --algo=ALGO       specify the hash algorithm to use\n\
 			0x10		ChainOX\n\
 			allium		Lyra2 blake2s\n\
+			argon2d500	Dynamic (DYN)\n\
 			argon2d1000	Zero Dynamics Cash\n\
+			argon2d4096	Argentum / Myriad (XMY)\n\
 			argon2d16000	Alterdot\n\
 			anime		Animecoin\n\
 			heavyhash	oBTC coin\n\
@@ -1838,7 +1840,9 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 		opt_difficulty = 1.;
 
 	switch (opt_algo) {
+		case ALGO_ARGON2D500:
 		case ALGO_ARGON2D1000:
+		case ALGO_ARGON2D4096:
 		case ALGO_ARGON2D16000:
 		case ALGO_GHOSTRIDER:
 		case ALGO_HMQ1725:
@@ -2440,7 +2444,9 @@ static void *miner_thread(void *userdata)
 			case ALGO_LYRA2:
 			case ALGO_LYRA2Z:
 			case ALGO_ALLIUM:
+			case ALGO_ARGON2D500:
 			case ALGO_ARGON2D1000:
+			case ALGO_ARGON2D4096:
 			case ALGO_ARGON2D16000:
 			case ALGO_NEOSCRYPT:
 			case ALGO_XAYA:
@@ -2623,6 +2629,12 @@ static void *miner_thread(void *userdata)
 			break;
 		case ALGO_ALLIUM:
 			rc = scanhash_allium(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_ARGON2D500:
+			rc = scanhash_argon2d500(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_ARGON2D4096:
+			rc = scanhash_argon2d4096(thr_id, &work, max_nonce, &hashes_done);
 			break;
 		case ALGO_ARGON2D1000:
 			rc = scanhash_argon2d1000(thr_id, &work, max_nonce, &hashes_done);
