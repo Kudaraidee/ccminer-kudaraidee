@@ -329,6 +329,7 @@ Options:\n\
 			veltor		Thorsriddle streebog\n\
 			whirlcoin	Old Whirlcoin (Whirlpool algo)\n\
 			whirlpool	Whirlpool algo\n\
+			whirlpoolx2	Whirlpoolx2 algo\n\
 			x11evo		Permuted x11 (Revolver)\n\
 			x11		X11 (DarkCoin)\n\
 			x13		X13 (MaruCoin)\n\
@@ -2401,7 +2402,7 @@ static void *miner_thread(void *userdata)
 			case ALGO_SHA256CSM:
 			case ALGO_SHA256D:
 			case ALGO_SHA256T:
-			//case ALGO_WHIRLPOOLX:
+			case ALGO_WHIRLPOOLX2:
 				minmax = 0x40000000U;
 				break;
 			case ALGO_BLAKE2B:
@@ -2712,9 +2713,9 @@ static void *miner_thread(void *userdata)
 		case ALGO_WHIRLPOOL:
 			rc = scanhash_whirl(thr_id, &work, max_nonce, &hashes_done);
 			break;
-		//case ALGO_WHIRLPOOLX:
-		//	rc = scanhash_whirlx(thr_id, &work, max_nonce, &hashes_done);
-		//	break;
+		case ALGO_WHIRLPOOLX2:
+			rc = scanhash_whirlpoolx2(thr_id, &work, max_nonce, &hashes_done);
+			break;
 		case ALGO_WILDKECCAK:
 			rc = scanhash_wildkeccak(thr_id, &work, max_nonce, &hashes_done);
 			break;
@@ -2826,7 +2827,6 @@ static void *miner_thread(void *userdata)
 			case ALGO_HEAVY:
 			case ALGO_SCRYPT:
 			case ALGO_SCRYPT_JANE:
-			//case ALGO_WHIRLPOOLX:
 				work.nonces[0] = nonceptr[0];
 				work.nonces[1] = nonceptr[2];
 		}
