@@ -241,7 +241,12 @@ int eq_blake2b_final(blake2b_state *S, uint8_t *out, uint8_t outlen)
 
 int eq_blake2b(uint8_t *out, const void *in, const void *key, const uint8_t outlen, const uint64_t inlen, uint8_t keylen)
 {
-	blake2b_state S[1];
+	/* single object, not blake2b_state S[1]: the struct is ALIGN(64) but its
+	 * size is not a multiple of 64, and newer GCC rejects an array of such an
+	 * over-aligned type ("size of array element is not a multiple of its
+	 * alignment"). A single over-aligned object is fine; S stays a pointer. */
+	blake2b_state _S;
+	blake2b_state *S = &_S;
 
 	/* Verify parameters */
 	if (!in || !out) return -1;
