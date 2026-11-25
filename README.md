@@ -214,6 +214,33 @@ source tree stays free of build artefacts.
 - **WSL2:** the CUDA driver library `libcuda.so` lives in `/usr/lib/wsl/lib`
   rather than under the toolkit; `configure.sh` already adds it to `LDFLAGS`.
 
+Stratum over TLS
+----------------
+
+Pool URLs may use any of `stratum+tcp://`, `stratum+ssl://`,
+`stratum+tcps://`, `http://` or `https://`. Both SSL spellings are mapped to
+libcurl's `https://` transport, so the connection is a real TLS socket rather
+than a plaintext one with an encrypted-looking scheme name. This also works
+for URLs delivered by an `X-Stratum` header, and `mining.reconnect` keeps the
+original scheme instead of falling back to plaintext. Use `--cert` to supply a
+custom CA bundle; libcurl 7.18.2 or newer is required (for
+`curl_easy_send()`/`curl_easy_recv()`).
+
+Nebhash
+-------
+
+`-a nebhash` mines NEB's `neb-pool/1` protocol (KEP1 convolutional model scan).
+The dataset file is consensus-pinned: download `neb-datasets.bin` from the NEB
+release page (verify it with `SHA256SUMS`), place it next to the binary or pass
+`--neb-dataset=/path/to/neb-datasets.bin`. The miner compares the
+pool's `dataset_hash` with the local file at subscribe time and refuses to mine
+on a mismatch. It accepts `mining.set_target`, `mining.set_model` and the
+object-form `mining.notify`, and re-checks GPU hits against the portable C
+reference before submitting `mining.submit`.
+
+The reference implementation and CUDA kernel live in `algos/nebhash/` under
+Apache-2.0 (`LICENSE.NEB`).
+
 Monitoring and control
 ----------------------
 

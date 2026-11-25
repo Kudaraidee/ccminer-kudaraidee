@@ -126,6 +126,7 @@ enum sha_algos {
 	ALGO_VERUS,
 	ALGO_BC3HASH,
 	ALGO_PEARLHASH,
+	ALGO_NEBHASH,
 	ALGO_AUTO,
 	ALGO_COUNT
 };
@@ -270,6 +271,7 @@ static const char *algo_names[] = {
 	"verus",
 	"bc3hash",
 	"pearlhash",
+	"nebhash",
 	"auto", /* reserved for multi algo */
 	""
 };
@@ -315,6 +317,8 @@ static inline int algo_to_int(char* arg)
 			i = ALGO_YESPOWER;
 		else if (!strcasecmp("hoohashv110", arg))
 			i = ALGO_HOOHASH;
+		else if (!strcasecmp("neb", arg))
+			i = ALGO_NEBHASH;
 		else if (!strcasecmp("verushash", arg))
 			i = ALGO_VERUS;
 		else if (!strcasecmp("pepepow", arg))

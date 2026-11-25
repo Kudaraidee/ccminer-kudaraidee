@@ -35,6 +35,13 @@ ccminer_SOURCES	= compat/elist.h miner.h compat.h \
 			  algos/curvehash/curvehash_oracle.cpp algos/curvehash/curvehash.cu algos/curvehash/secp256k1_unity.c \
 			  algos/bc3hash/bc3hash_oracle.cpp algos/bc3hash/bc3hash.cu \
 			  algos/pearlhash/pearlhash.cu \
+			  algos/nebhash/nebhash.cpp algos/nebhash/nebhash.h \
+			  algos/nebhash/nebhash2.c algos/nebhash/nebhash2.h \
+			  algos/nebhash/shares.c algos/nebhash/shares.h \
+			  algos/nebhash/chacha8.c algos/nebhash/chacha8.h \
+			  algos/nebhash/blake3_min.c algos/nebhash/blake3_min.h \
+			  algos/nebhash/nebhash2_cuda.cu algos/nebhash/nebhash2_cuda.h \
+			  algos/nebhash/LICENSE.NEB \
 			  algos/verthash/verthash.cu algos/verthash/cuda_verthash.cu \
 			  algos/verthash/verthash-cpu.c algos/verthash/verthash-data.cpp \
 			  cuda/sha3_device.cuh \
@@ -272,6 +279,11 @@ algos/bc3hash/bc3hash.o: algos/bc3hash/bc3hash.cu algos/bc3hash/cuda/bc3_constan
 algos/pearlhash/pearlhash.o: algos/pearlhash/pearlhash.cu algos/pearlhash/pearl_device.cuh \
 		algos/pearlhash/pearl_ref.h algos/pearlhash/pearl_proof.h cuda/blake3_device.cuh
 	$(NVCC) $(nvcc_FLAGS) --maxrregcount=128 -o $@ -c $<
+
+# nebhash2_cuda.cu includes the C reference tables; rebuild with them.
+algos/nebhash/nebhash2_cuda.o: algos/nebhash/nebhash2_cuda.cu algos/nebhash/nebhash2_cuda.h \
+		algos/nebhash/nebhash2.h
+	$(NVCC) $(nvcc_FLAGS) -o $@ -c $<
 
 algos/blake256/blake256.o: algos/blake256/blake256.cu
 	$(NVCC) $(nvcc_FLAGS) --maxrregcount=64 -o $@ -c $<

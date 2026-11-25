@@ -47,6 +47,7 @@
 #include "algos/cryptonight/xmr-rpc.h"
 #include "sph/sph_sha3d.h"
 #include "algos/equihash/equihash.h"
+#include "algos/nebhash/nebhash.h"
 
 #include <cuda_runtime.h>
 
@@ -292,6 +293,7 @@ Options:\n\
 			bastion		Hefty bastion\n\
 			bc3hash		Bitcoin III (BC3Hash, from block 64360)\n\
 			pearlhash	Pearl (PRL, noisy int8 GEMM; rate in MAC/s)\n\
+			nebhash		NEB (neb-pool/1, KEP1 model scan; needs neb-datasets.bin)\n\
 			bitcore		Timetravel-10\n\
 			blake		Blake 256 (SFR)\n\
 			blake2b		Blake2-B 512 (BCX)\n\
@@ -468,6 +470,7 @@ Options:\n\
       --api-control     Allow the API to pause/resume/stop mining at runtime\n\
       --api-control-min-interval=N  Seconds between accepted state changes (default: 15)\n\
       --api-control-park-timeout=N  Milliseconds to wait for threads to idle (default: 30000)\n\
+      --neb-dataset=PATH nebhash dataset file (default: neb-datasets.bin)\n\
       --max-temp=N      Only mine if gpu temp is less than specified value\n\
       --max-rate=N[KMG] Only mine if net hashrate is less than specified value\n\
       --max-diff=N      Only mine if net difficulty is less than specified value\n\
@@ -551,6 +554,7 @@ struct option options[] = {
 	{ "launch-config", 1, NULL, 'l' }, // scrypt bbr xmr
 	{ "scratchpad", 1, NULL, 'k' },    // bbr
 	{ "bfactor", 1, NULL, 1055 },      // xmr
+	{ "neb-dataset", 1, NULL, 1103 },
 	{ "max-temp", 1, NULL, 1060 },
 	{ "max-diff", 1, NULL, 1061 },
 	{ "max-rate", 1, NULL, 1062 },
@@ -1226,6 +1230,25 @@ static bool submit_upstream_work(CURL *curl, struct work *work)
 				pool->user, work->job_id + 8, noncestr, hhstr, mixstr,
 				sub_id);
 			free(noncestr); free(hhstr); free(mixstr);
+			gettimeofday(&stratum.tv_submit, NULL);
+			if (unlikely(!stratum_send_line(&stratum, s))) {
+				applog(LOG_ERR, "submit_upstream_work stratum_send_line failed");
+				return false;
+			}
+			stratum.job.shares_count++;
+			return true;
+		}
+
+		// neb-pool/1: [login, job_id, extranonce2(hex), time(number), nonce(number)]
+		if (opt_algo == ALGO_NEBHASH && work->is_nebhash) {
+			char *xnonce2str = bin2hex(work->xnonce2, work->xnonce2_len);
+			stratum.sharediff = work->sharediff[idnonce];
+			submit_id_remember(sub_id, stratum.sharediff);
+			snprintf(s, sizeof(s), "{\"method\": \"mining.submit\", \"params\": ["
+				"\"%s\", \"%s\", \"%s\", %u, %u], \"id\":%u}",
+				pool->user, work->job_id + 8, xnonce2str,
+				work->neb_ntime, nonce, sub_id);
+			free(xnonce2str);
 			gettimeofday(&stratum.tv_submit, NULL);
 			if (unlikely(!stratum_send_line(&stratum, s))) {
 				applog(LOG_ERR, "submit_upstream_work stratum_send_line failed");
@@ -1951,8 +1974,67 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 	 * and the stratum struct survives a pool switch, so leaving it alone let a
 	 * ProgPoW scan accept another algo's job and size its DAG from that height. */
 	work->is_kawpow = false;
+	work->is_nebhash = false;
 	// and the pool of the current stratum
 	work->pooln = sctx->pooln;
+
+	if (opt_algo == ALGO_NEBHASH) {
+		uint8_t bound[32];
+		size_t j;
+		bool have_bound = false;
+
+		if (!sctx->job.is_nebhash || !nebhash_dataset_loaded()) {
+			applog(LOG_ERR, "Nebhash: job has no model/dataset yet");
+			pthread_mutex_unlock(&stratum_work_lock);
+			return false;
+		}
+		if (sctx->job.neb_expiry && time(NULL) >= (time_t)sctx->job.neb_expiry) {
+			applog(LOG_INFO, "Nebhash: job expired, waiting for a new one");
+			pthread_mutex_unlock(&stratum_work_lock);
+			return false;
+		}
+		if (!nebhash_have_model(sctx->job.neb_weights_hash)) {
+			if (opt_debug)
+				applog(LOG_DEBUG, "Nebhash: waiting for model %02x%02x...",
+					sctx->job.neb_weights_hash[0], sctx->job.neb_weights_hash[1]);
+			pthread_mutex_unlock(&stratum_work_lock);
+			return false;
+		}
+		/* Roll extranonce2 per job, as with the standard stratum path. */
+		if (sctx->job.xnonce2)
+			for (i = 0; i < (int)sctx->xnonce2_size && !++sctx->job.xnonce2[i]; i++);
+
+		if (nebhash_build_header(sctx->job.neb_version, sctx->job.neb_parent,
+			sctx->job.neb_cb_prefix, sctx->job.neb_cb_prefix_len,
+			sctx->xnonce1, sctx->xnonce1_size,
+			sctx->job.xnonce2, sctx->xnonce2_size,
+			sctx->job.neb_cb_suffix, sctx->job.neb_cb_suffix_len,
+			sctx->job.neb_branch, sctx->job.neb_branch_count, sctx->job.neb_tx_count,
+			sctx->job.neb_shares_root, sctx->job.neb_time_start,
+			sctx->job.neb_bits, work->neb_header) != 0) {
+			pthread_mutex_unlock(&stratum_work_lock);
+			return false;
+		}
+
+		memset(work->data, 0, sizeof(work->data));
+		memcpy(work->data, work->neb_header, 80);   // data[19] = nonce cursor
+		memcpy(work->neb_model_hash, sctx->job.neb_weights_hash, 32);
+		work->neb_ntime = sctx->job.neb_time_start;
+		work->neb_slot = sctx->job.neb_slot;
+		work->is_nebhash = true;
+
+		/* mining.set_target carries the pool target; jobs also carry the chain
+		 * share target, used only until the first set_target arrives. */
+		memcpy(bound, sctx->job.neb_pool_target, 32);
+		for (j = 0; j < 32; j++)
+			if (bound[j]) { have_bound = true; break; }
+		if (!have_bound)
+			memcpy(bound, sctx->job.neb_share_target, 32);
+		memcpy(work->target, bound, 32);
+		work->targetdiff = nebhash_target_to_diff(bound);
+		pthread_mutex_unlock(&stratum_work_lock);
+		return true;
+	}
 
 	if (opt_algo == ALGO_PEARLHASH) {
 		// Pearl: raw 76-byte header, data[19] = trial cursor
@@ -2182,7 +2264,7 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 	}
 
 header_done:
-	if (opt_showdiff || opt_max_diff > 0.)
+	if (opt_algo != ALGO_NEBHASH && (opt_showdiff || opt_max_diff > 0.))
 		calc_network_diff(work);
 
 	switch (opt_algo) {
@@ -3375,6 +3457,9 @@ static void *miner_thread(void *userdata)
 			break;
 		case ALGO_PEARLHASH:
 			rc = scanhash_pearlhash(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_NEBHASH:
+			rc = nebhash_scanhash(thr_id, &work, max_nonce, &hashes_done);
 			break;
 		case ALGO_VERTHASH:
 			rc = scanhash_verthash(thr_id, &work, max_nonce, &hashes_done);
@@ -4765,6 +4850,9 @@ void parse_arg(int key, char *arg)
 	case 1101: /* pool algo */
 		pool_set_attr(cur_pooln, "algo", arg);
 		break;
+	case 1103: /* nebhash dataset file */
+		nebhash_set_dataset_option(arg);
+		break;
 	case 1102: /* pool scantime */
 		pool_set_attr(cur_pooln, "scantime", arg);
 		break;
@@ -4949,7 +5037,6 @@ BOOL WINAPI ConsoleHandler(DWORD dwType)
 int main(int argc, char *argv[])
 {
 	struct thr_info *thr;
-	long flags;
 	int i;
 
 	// get opt_quiet early
@@ -5095,16 +5182,23 @@ int main(int argc, char *argv[])
 		GetScratchpad();
 	}
 
-	flags = CURL_GLOBAL_ALL;
-	if ( !opt_benchmark )
-		if ( strncasecmp( rpc_url, "https:", 6 )
-			&& strncasecmp(rpc_url, "stratum+ssl://", 14 )
-			&& strncasecmp( rpc_url, "stratum+tcps://", 15 ) )
-			flags &= ~CURL_GLOBAL_SSL;
-
-	if (curl_global_init(flags)) {
+	/* Always bring up SSL: an X-Stratum header, a pool switch or a server
+	 * reconnect can introduce an https/stratum+ssl URL after startup. */
+	if (curl_global_init(CURL_GLOBAL_ALL)) {
 		applog(LOG_ERR, "CURL initialization failed");
 		return EXIT_CODE_SW_INIT_ERROR;
+	}
+
+	if (opt_algo == ALGO_NEBHASH) {
+		const char *path = nebhash_dataset_option();
+		if (!path)
+			path = "neb-datasets.bin";
+		if (nebhash_load_dataset_file(path) != 0) {
+			applog(LOG_ERR, "Nebhash dataset unavailable; pass --neb-dataset=PATH");
+			return EXIT_CODE_SW_INIT_ERROR;
+		}
+		if (!opt_quiet)
+			applog(LOG_INFO, "Nebhash dataset loaded from %s", path);
 	}
 
 	if (opt_background) {

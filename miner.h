@@ -795,6 +795,27 @@ struct stratum_job {
 	uint32_t height;
 	uint32_t shares_count;
 	double diff;
+	// Nebhash (neb-pool/1 object notify; see algos/nebhash/)
+	bool          is_nebhash;
+	uint32_t      neb_version;
+	unsigned char neb_parent[32];
+	uint32_t      neb_time_start;
+	uint32_t      neb_bits;
+	unsigned char neb_target[32];       // block target, LE 256-bit
+	unsigned char neb_share_target[32]; // chain share target, LE 256-bit
+	unsigned char neb_pool_target[32];  // pool target pinned when the job arrived
+	unsigned char neb_shares_root[32];
+	unsigned char neb_cb_prefix[128];
+	size_t        neb_cb_prefix_len;
+	unsigned char neb_cb_suffix[128];
+	size_t        neb_cb_suffix_len;
+	unsigned char *neb_branch;          // branch_count * 32 bytes, owned by the job
+	size_t        neb_branch_count;
+	uint32_t      neb_tx_count;
+	uint32_t      neb_expiry;
+	uint8_t       neb_slot;
+	unsigned char neb_weights_hash[32];
+	unsigned char neb_xnonce2[16];      // owned by the job, no coinbase to point into
 	// Veil SHA256Dv (bespoke notify, see sha256dv.cu)
 	bool          veil_sha256dv;
 	unsigned char veil_midstate_be[32];
@@ -906,6 +927,13 @@ struct work {
 
 	uint32_t scanned_from;
 	uint32_t scanned_to;
+
+	// Nebhash attempt fields (see algos/nebhash/)
+	bool          is_nebhash;
+	unsigned char neb_header[80];       // LE header, nonce zeroed
+	unsigned char neb_model_hash[32];
+	uint32_t      neb_ntime;            // numeric time sent in mining.submit
+	uint8_t       neb_slot;
 
 	// Veil SHA256Dv job fields (bespoke notify/submit, see sha256dv.cu)
 	bool          veil_sha256dv;

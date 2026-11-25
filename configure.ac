@@ -93,8 +93,8 @@ else
 	JANSSON_LIBS=-ljansson
 fi
 
-LIBCURL_CHECK_CONFIG(, 7.15.2, ,
-  [AC_MSG_ERROR([Missing required libcurl >= 7.15.2])])
+LIBCURL_CHECK_CONFIG(, 7.18.2, ,
+  [AC_MSG_ERROR([Missing required libcurl >= 7.18.2 (needed for curl_easy_send/recv used by SSL stratum)])])
 
 AC_SUBST(JANSSON_LIBS)
 AC_SUBST(PTHREAD_FLAGS)
