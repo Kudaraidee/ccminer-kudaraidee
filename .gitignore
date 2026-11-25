@@ -2,6 +2,10 @@
 ccminer
 *.o
 
+# out-of-tree Linux build dir (keeps the shared source tree clean; avoids the
+# ccminer/ dir name collision with the Windows MSBuild IntDir)
+build-linux/
+
 autom4te.cache
 .deps
 
@@ -36,6 +40,12 @@ Debug/
 Release/
 x64/Debug/
 x64/Release/
+Debug-cuda12/
+Release-cuda12/
+x64/Debug-cuda12/
+x64/Release-cuda12/
+x64/*-sm[0-9]*/
+build-linux-sm*/
 *.suo
 *.user
 *.opensdf
@@ -69,4 +79,4 @@ compat/curl-for-windows/
 *.cudafe2.c
 
 *.bak
-configure~
+*~

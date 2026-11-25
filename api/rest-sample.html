@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<!--
+  Minimal REST API dashboard. Works against either miner: it branches on
+  miner.kind and on the capability list from GET /api/v1/, never on miner.name.
+  Contract: docs/api-rest.md
+
+  Start the miner with:  --api-mode=http  (or both)
+  Serving this file from disk needs CORS:  --api-cors='*'
+
+  The PHP and Perl samples next to this file target the binary protocol and are
+  left as references for that mode.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>miner</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 2rem auto; max-width: 60rem; padding: 0 1rem; }
+  h1 { font-size: 1.1rem; font-weight: 600; margin: 0 0 .25rem; }
+  .sub { opacity: .65; font-size: .85rem; margin-bottom: 1.5rem; }
+  section { margin-bottom: 1.5rem; }
+  h2 { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em;
+       opacity: .6; font-weight: 600; margin: 0 0 .5rem; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: .3rem .6rem .3rem 0; border-bottom: 1px solid rgba(128,128,128,.2); }
+  th { font-weight: 500; opacity: .7; width: 12rem; }
+  td.num { text-align: right; font-family: ui-monospace, monospace; }
+  .null { opacity: .4; font-style: italic; }
+  .bad { color: #c0392b; font-weight: 600; }
+  .ok { color: #27ae60; }
+  #err { padding: .75rem 1rem; border: 1px solid #c0392b; border-radius: 4px; margin-bottom: 1rem; }
+  input { font: inherit; padding: .2rem .4rem; width: 22rem; }
+</style>
+</head>
+<body>
+
+<h1 id="title">connecting…</h1>
+<div class="sub" id="subtitle"></div>
+<div id="err" hidden></div>
+
+<section>
+  <h2>endpoint</h2>
+  <input id="base" value="http://127.0.0.1:4068/api/v1">
+  <label style="margin-left:.5rem"><input type="checkbox" id="auto" checked> refresh 5 s</label>
+</section>
+
+<section id="panels"></section>
+
+<section>
+  <h2>capabilities</h2>
+  <div id="caps" class="sub"></div>
+</section>
+
+<script>
+const $ = id => document.getElementById(id);
+let caps = new Set(), kind = null, timer = null;
+
+const fmtHash = v => {
+  if (v === null || v === undefined) return null;
+  const u = ['H/s', 'kH/s', 'MH/s', 'GH/s', 'TH/s'];
+  let i = 0; while (v >= 1000 && i < u.length - 1) { v /= 1000; i++; }
+  return v.toFixed(2) + ' ' + u[i];
+};
+
+// null means "not available", and must never be rendered as 0 (docs/api-rest.md section 3).
+const cell = v => v === null || v === undefined
+  ? '<td class="num null">null</td>'
+  : `<td class="num">${v}</td>`;
+
+async function get(path) {
+  const r = await fetch($('base').value + path, { headers: { 'Accept': 'application/json' } });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    // Errors carry the same envelope, so error.code is always readable.
+    const e = body.error || {};
+    throw new Error(`${path}: ${r.status} ${e.code || ''} ${e.message || ''}`);
+  }
+  return body;
+}
+
+function table(rows) {
+  return '<table>' + rows.map(([k, v]) =>
+    `<tr><th>${k}</th>${typeof v === 'string' && v.startsWith('<td') ? v : cell(v)}</tr>`).join('') + '</table>';
+}
+
+// The 202 path: poll /control/state until the mutation leaves `switching`,
+// then epoch tells you whether it was applied and last_error why it was not.
+async function pollUntilSettled(timeoutMs = 60000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const c = (await get('/control/state')).control;
+    if (c.state !== 'switching') return c;
+    await new Promise(r => setTimeout(r, 250));
+  }
+  throw new Error('control: still switching after ' + timeoutMs + ' ms');
+}
+
+async function tick() {
+  const out = [];
+  try {
+    const idx = await get('/');
+    kind = idx.miner.kind;
+    caps = new Set(idx.index.capabilities);
+    $('title').textContent = `${idx.miner.name} ${idx.miner.version}`;
+    $('subtitle').textContent = `kind=${kind} · contract v${idx.miner.api_version}`;
+    $('caps').textContent = [...caps].join(' · ');
+    $('err').hidden = true;
+
+    if (caps.has('health')) {
+      // /health answers 503 when degraded, so read it without throwing.
+      const r = await fetch($('base').value + '/health');
+      const h = (await r.json()).health;
+      out.push('<h2>health</h2>' + table([
+        ['status', `<td class="num ${h.status === 'ok' ? 'ok' : 'bad'}">${h.status}</td>`],
+        ['mining', `<td class="num">${h.mining}</td>`],
+        ['pool connected', h.pool_connected === null ? null : `<td class="num">${h.pool_connected}</td>`],
+        ['devices ok', h.devices_ok],
+        ['reasons', h.reasons ? `<td class="num bad">${h.reasons.join(', ')}</td>` : null],
+      ]));
+    }
+
+    if (caps.has('summary')) {
+      const s = (await get('/summary')).summary;
+      out.push('<h2>summary</h2>' + table([
+        ['algo', `<td class="num">${s.algo}</td>`],
+        ['hashrate', `<td class="num">${fmtHash(s.hashrate_hs)}</td>`],
+        ['accepted / rejected', `<td class="num">${s.shares.accepted} / ${s.shares.rejected}</td>`],
+        ['accepted per min', s.shares.accepted_per_min],
+        ['pool difficulty', s.difficulty.pool],
+        ['uptime (s)', s.uptime_s],
+        // devices means GPUs on a gpu miner, CPUs on a cpu miner
+        [kind === 'gpu' ? 'gpus' : 'cpus', s.devices],
+      ]));
+    }
+
+    if (caps.has('devices')) {
+      const ds = (await get('/devices')).devices;
+      out.push('<h2>devices</h2><table><tr><th>name</th><td class="num">temp</td>' +
+        '<td class="num">fan</td><td class="num">power</td><td class="num">hashrate</td></tr>' +
+        ds.map(d => `<tr><th>${d.name}</th>` +
+          cell(d.temp_c === null ? null : d.temp_c + ' °C') +
+          cell(d.fan_pct === null ? null : d.fan_pct + ' %') +
+          cell(d.power_mw === null ? null : (d.power_mw / 1000).toFixed(0) + ' W') +
+          cell(fmtHash(d.hashrate_hs)) + '</tr>').join('') + '</table>');
+    }
+
+    if (caps.has('pools')) {
+      const ps = (await get('/pools')).pools;
+      out.push('<h2>pools</h2><table><tr><th>url</th><td class="num">acc/rej</td>' +
+        '<td class="num">ping</td><td class="num">job</td></tr>' +
+        ps.map(p => `<tr><th>${p.active ? '▸ ' : ''}${p.url || '(none)'}</th>` +
+          cell(`${p.shares.accepted}/${p.shares.rejected}`) +
+          cell(p.ping_ms === null ? null : p.ping_ms + ' ms') +
+          cell(p.job && p.job.id ? p.job.id : null) + '</tr>').join('') + '</table>');
+    }
+
+    if (caps.has('control.state')) {
+      const c = (await get('/control/state')).control;
+      const busy = c.state === 'switching';
+      out.push('<h2>control</h2>' + table([
+        ['state', c.state],
+        ['epoch', c.epoch],
+        ['algo', c.algo],
+        ['parked', `${c.threads_parked}/${c.threads_total}`],
+        ['pool connected', c.pool_connected === null ? null : String(c.pool_connected)],
+        ['ready to switch', String(c.ready_for_switch)],
+        ['last error', c.last_error]
+      ]) + '<div class="sub">' +
+        ['start', 'pause', 'stop'].filter(v => caps.has('control.' + v)).map(v =>
+          `<button data-verb="${v}"${busy ? ' disabled' : ''}>${v}</button>`).join(' ') +
+        '</div>');
+    }
+
+    $('panels').innerHTML = out.join('');
+
+    // 200 means applied, 202 means accepted — both are success. Treating only
+    // 200 as success would misread a slow switch as a failure and retry it,
+    // which the busy guard then rejects with 409.
+    document.querySelectorAll('[data-verb]').forEach(b => {
+      b.onclick = async () => {
+        b.disabled = true;
+        try {
+          const r = await fetch($('base').value + '/control/' + b.dataset.verb, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ wait_ms: 2000 })
+          });
+          const body = await r.json().catch(() => ({}));
+          if (r.status === 202) await pollUntilSettled();
+          else if (!r.ok) throw new Error(`${r.status} ${(body.error || {}).message || ''}`);
+        } catch (e) {
+          $('err').hidden = false;
+          $('err').textContent = e.message;
+        }
+        tick();
+      };
+    });
+  } catch (e) {
+    $('err').hidden = false;
+    $('err').textContent = e.message + '  — is the miner running with --api-mode=http|both, and --api-cors set?';
+  }
+}
+
+$('auto').onchange = () => {
+  clearInterval(timer);
+  if ($('auto').checked) timer = setInterval(tick, 5000);
+};
+$('base').onchange = tick;
+tick();
+timer = setInterval(tick, 5000);
+</script>
+</body>
+</html>

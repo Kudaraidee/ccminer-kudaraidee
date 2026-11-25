@@ -22,7 +22,12 @@
    supported. */
 
 #ifdef _MSC_VER
+/* MSVC before VS2015 had no C "inline". Must stay inert for C++, where
+ * inline is a keyword and macroizing it makes the standard library reject
+ * the translation unit (xkeycheck.h, error C1189). */
+#ifndef __cplusplus
 #define inline __inline
+#endif
 #if !defined(HAVE_STRUCT_TIMESPEC) && _MSC_VER >= 1900
 #define HAVE_STRUCT_TIMESPEC
 #endif

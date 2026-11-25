@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright 2010 Jeff Garzik
  * Copyright 2012-2014 pooler
  * Copyright 2014-2017 tpruvot
@@ -11,15 +11,10 @@
 
 #include <ccminer-config.h>
 
-#include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef __cplusplus
-#include <cstdbool> // C++ equivalent of stdbool.h
-#else
 #include <stdbool.h>
-#endif
 #include <inttypes.h>
 #include <unistd.h>
 #include <math.h>
@@ -47,10 +42,11 @@
 
 #include "miner.h"
 #include "algos.h"
-#include "sia/sia-rpc.h"
-#include "crypto/xmr-rpc.h"
+#include "core/api/api_control.h"
+#include "algos/sia/sia-rpc.h"
+#include "algos/cryptonight/xmr-rpc.h"
 #include "sph/sph_sha3d.h"
-#include "equi/equihash.h"
+#include "algos/equihash/equihash.h"
 
 #include <cuda_runtime.h>
 
@@ -66,7 +62,7 @@ BOOL WINAPI ConsoleHandler(DWORD);
 #define HEAVYCOIN_BLKHDR_SZ		84
 #define MNR_BLKHDR_SZ 80
 
-#include "nvml.h"
+#include "core/gpu/nvml.h"
 #ifdef USE_WRAPNVML
 nvml_handle *hnvml = NULL;
 #endif
@@ -117,6 +113,10 @@ static int opt_fail_pause = 30;
 int opt_time_limit = -1;
 int opt_shares_limit = -1;
 time_t firstwork_time = 0;
+/* Wall clock for the global --time-limit deadline.  `firstwork_time` restarts
+ * on every pool switch so each pool gets its own mining period, which means a
+ * rotating miner would never accumulate the deadline.  This one is set once. */
+time_t session_start_time = 0;
 int opt_timeout = 300; // curl
 int opt_scantime = 10;
 static json_t *opt_config;
@@ -124,7 +124,6 @@ static const bool opt_time = true;
 volatile enum sha_algos opt_algo = ALGO_AUTO;
 int opt_n_threads = 0;
 int gpu_threads = 1;
-uint32_t opt_batch_size = 0;
 int64_t opt_affinity = -1L;
 int opt_priority = 0;
 static double opt_difficulty = 1.;
@@ -189,6 +188,14 @@ pthread_mutex_t stratum_sock_lock;
 pthread_mutex_t stratum_work_lock;
 
 char *opt_cert;
+char *opt_verthash_data = NULL;  // --verthash-data <path> to verthash.dat
+bool opt_gen_verthash_data = false;  // --generate-verthash-dat: (re)create it, then exit
+// verthash.dat generator / loader (algos/verthash/verthash-data.cpp)
+extern "C" {
+	int verthash_generate_data_file(const char *path);
+	int verthash_data_load(const char *path, uint8_t **out_buf, size_t *out_size);
+	int verthash_data_verify(const uint8_t *buf, size_t size);
+}
 char *opt_proxy;
 long opt_proxy_type;
 struct thr_info *thr_info = NULL;
@@ -211,6 +218,15 @@ double   stratum_diff = 0.0;
 double   net_diff = 0;
 uint64_t net_hashrate = 0;
 uint64_t net_blocks = 0;
+/* Stratum submit ids: monotonic, never restarting, each paired with the
+ * difficulty it was submitted with. The id must be unique for the whole
+ * session -- one that restarts per job lets a response arriving after a job
+ * change match the wrong share. It is only a JSON-RPC correlation token. */
+#define SUBMIT_RING 32
+static uint32_t submit_seq = 10;
+static struct { uint32_t id; double diff; } submit_ring[SUBMIT_RING] = { 0 };
+static uint32_t submit_ring_pos = 0;
+static pthread_mutex_t submit_id_lock;
 // conditional mining
 uint8_t conditional_state[MAX_GPUS] = { 0 };
 double opt_max_temp = 0.0;
@@ -232,6 +248,14 @@ char *opt_user_agent = NULL; /* overrides the default USER_AGENT sent to the poo
 int opt_api_port = 4068; /* 0 to disable */
 char *opt_api_allow = NULL;
 char *opt_api_groups = NULL;
+/* REST API (docs/api-rest.md). Defaults keep today's behaviour exactly. */
+int opt_api_mode = API_MODE_BINARY;
+char *opt_api_token = NULL;
+char *opt_api_cors = NULL;
+int opt_api_http_port = 0;
+bool opt_api_control = false;
+int opt_api_control_min_interval = 15;
+int opt_api_control_park_timeout = 30000;
 bool opt_api_mcast = false;
 char *opt_api_mcast_addr = strdup(API_MCAST_ADDR);
 char *opt_api_mcast_code = strdup(API_MCAST_CODE);
@@ -257,14 +281,17 @@ Usage: " PROGRAM_NAME " [OPTIONS]\n\
 Options:\n\
   -a, --algo=ALGO       specify the hash algorithm to use\n\
 			0x10		ChainOX\n\
-			allium		Lyra2 blake2s\n\
+			allium		Garlicoin (Lyra2 chain)\n\
+			anime		Animecoin\n\
 			argon2d500	Dynamic (DYN)\n\
 			argon2d1000	Zero Dynamics Cash\n\
 			argon2d4096	Argentum / Myriad (XMY)\n\
 			argon2d16000	Alterdot\n\
-			anime		Animecoin\n\
-			heavyhash	oBTC coin\n\
+			argon2id1024	Bitweb (BTW)\n\
+			balloon		Balloon hash\n\
 			bastion		Hefty bastion\n\
+			bc3hash		Bitcoin III (BC3Hash, from block 64360)\n\
+			pearlhash	Pearl (PRL, noisy int8 GEMM; rate in MAC/s)\n\
 			bitcore		Timetravel-10\n\
 			blake		Blake 256 (SFR)\n\
 			blake2b		Blake2-B 512 (BCX)\n\
@@ -272,82 +299,116 @@ Options:\n\
 			blakecoin	Fast Blake 256 (8 rounds)\n\
 			bmw		BMW 256\n\
 			bmw512		BMW 512\n\
+			c11/flax	X11 variant\n\
 			cryptolight	AEON cryptonight (MEM/2)\n\
 			cryptonight	XMR cryptonight\n\
-			c11/flax	X11 variant\n\
-			decred		Decred Blake256\n\
+			curvehash	CurvehashCoin\n\
+			decred		Decred BLAKE3\n\
 			deep		Deepcoin\n\
-			equihash	Zcash Equihash\n\
-			evohash		EvoAI \n\
 			dmd-gr		Diamond-Groestl\n\
+			equihash	Equihash 200/9 (Zcash)\n\
+			equihash144	Equihash 144/5\n\
+			equihash192	Equihash 192/7\n\
+			evohash		EvoAI\n\
+			evrprogpow	EvrProgPow (Evrmore)\n\
+			firopow		FiroPoW (Firo, StakeCube)\n\
+			flex		Flex (Kylacoin, Lyncoin)\n\
 			fresh		Freshcoin (shavite 80)\n\
 			fugue256	Fuguecoin\n\
 			ghostrider	GhostRider (Raptoreum)\n\
 			gostcoin	Double GOST R 34.11\n\
 			groestl		Groestlcoin\n"
 #ifdef WITH_HEAVY_ALGO
-"			heavy       Heavycoin\n"
+"			heavy		Heavycoin\n"
 #endif
-"			hmq1725		Doubloons / Espers\n\
+"			heavyhash	oBTC coin\n\
+			hmq1725		Doubloons / Espers\n\
+			homescrypt	HomeScrypt v1.2 (Lumenite)\n\
 			hoohash		HoohashV110 (PEPEPOW)\n\
+			hsr		Hshare / HSR (X13 SM3)\n\
 			jackpot		JHA v8\n\
+			jha		JHA (Jackpothash)\n\
+			kawpow		KawPoW (Ravencoin)\n\
 			keccak		Deprecated Keccak-256\n\
 			keccakc		Keccak-256 (CreativeCoin)\n\
 			lbry		LBRY Credits (Sha/Ripemd)\n\
 			luffa		Joincoin\n\
 			lyra2		CryptoCoin\n\
+			lyra2re		Lyra2RE\n\
 			lyra2v2		VertCoin\n\
 			lyra2z		ZeroCoin (3rd impl)\n\
+			lyra2z330	Lyra2Z330\n\
+			meowpow		MeowPow (Meowcoin)\n\
+			meraki		Meraki (Telestai)\n\
+			mike		Mike (VKAX, FortuneBlock)\n"
+#ifdef WITH_HEAVY_ALGO
+"			mjollnir	Mjollnircoin (Hefty)\n"
+#endif
+"			minotaurx	MinotaurX (Avian, Pulsar)\n\
 			myr-gr		Myriad-Groestl\n\
 			neoscrypt	FeatherCoin, Phoenix, UFO...\n\
-			neoscrypt-xaya	XAYA's version...\n\
+			xaya/neoscrypt-xaya	XAYA's version...\n\
 			nist5		NIST5 (TalkCoin)\n\
+			odo		Odocrypt (DigiByte)\n\
 			penta		Pentablake hash (5x Blake 512)\n\
 			phi		BHCoin\n\
 			polytimos	Politimos\n\
+			power2b		yespower 1.0-b2b (MicroBitcoin)\n\
 			quark		Quark\n\
 			qubit		Qubit\n\
 			rinhash		RinHash (Blake3+Argon2d+SHA3-256)\n\
-			sha256csm	SHA256csm (galleoncoin)\n\
-			sha256d		SHA256d (bitcoin)\n\
-			sha256t		SHA256 x3\n\
-			sha3d		Bsha3, Yilacoin and Kylacoin\n\
-			sha3t		Fjarcode and Bitcoin III\n\
-			sia		SIA (Blake2B)\n\
-			sib		Sibcoin (X11+Streebog)\n\
+			s3		S3 (1Coin)\n\
 			scrypt		Scrypt\n\
 			scrypt-jane	Scrypt-jane Chacha\n\
+			sha3d		Bsha3, Yilacoin and Kylacoin\n\
+			sha3t		Fjarcode, Bitcoin III before block 64360\n\
+			sha256csm	SHA256csm (galleoncoin)\n\
+			sha256d		SHA256d (bitcoin)\n\
+			sha256dv	SHA256d Veil\n\
+			sha256t		SHA256 x3\n\
+			sha512256d	Double SHA512/256 (Radiant)\n\
+			sia		SIA (Blake2B)\n\
+			sib		Sibcoin (X11+Streebog)\n\
 			skein		Skein SHA2 (Skeincoin)\n\
 			skein2		Double Skein (Woodcoin)\n\
 			skunk		Skein Cube Fugue Streebog\n\
 			skydoge		SkyDoge\n\
-			soterg		Soteria\n\
-			s3		S3 (1Coin)\n\
+			soterg		Soteria (X12R)\n\
 			timetravel	Machinecoin permuted x8\n\
-			tribus 		Denarius\n\
+			tribus		Denarius\n\
 			vanilla		Blake256-8 (VNL)\n\
 			veltor		Thorsriddle streebog\n\
+			verthash	Verthash (Vertcoin)\n\
+			verus		VerusHash 2.2 (Verus, PBaaS), alias verushash\n\
 			whirlcoin	Old Whirlcoin (Whirlpool algo)\n\
 			whirlpool	Whirlpool algo\n\
-			whirlpoolx2	Whirlpoolx2 algo\n\
-			x11evo		Permuted x11 (Revolver)\n\
+			whirlpoolx	WhirlpoolX\n\
+			whirlpoolx2	WhirlpoolX2 (CapStash)\n\
+			wildkeccak	Boolberry\n\
 			x11		X11 (DarkCoin)\n\
+			x11evo		Permuted x11 (Revolver)\n\
 			x13		X13 (MaruCoin)\n\
 			x14		X14\n\
 			x15		X15\n\
-			x17		X17\n\
 			x16r		X16R\n\
 			x16rt		X16RT\n\
 			x16rv2		X16R V2\n\
 			x16s		X16S\n\
+			x17		X17\n\
 			x21s		X21S\n\
-			wildkeccak	Boolberry\n\
-			yescrypt     Globlboost-Y (BSTY) or any params\n\
-			yescryptr8   BitZeny (ZNY)\n\
-			yescryptr16  Yenten (YTN)\n\
-			yescryptr16v2 PPTP\n\
-			yescryptr24  JagariCoinR\n\
-			yescryptr32  WAVI\n\
+			x25x		X25X (SUQA/SIN)\n\
+			yescrypt	Globlboost-Y (BSTY) or any params\n\
+			yescryptr8	BitZeny (ZNY)\n\
+			yescryptr16	Yenten (YTN)\n\
+			yescryptr16v2	PPTP\n\
+			yescryptr24	JagariCoinR\n\
+			yescryptr32	WAVI\n\
+			yespower	yespower 1.0, params via --yespower-param/-key\n\
+			yespowereqpay	EqPay (EQPAY), 181-byte header\n\
+			yespowerr16	yespower 1.0 N=4096 r=16 (Yenten)\n\
+			 coin aliases	yespowerADVC yespowerARWN yespowerIC yespowerIOTS\n\
+					yespowerLITB yespowerLTNCG yespowerMGPC yespowerSMT\n\
+					yespowerSUGAR yespowerTIDE yespowerURX cpupower\n\
 			zr5		ZR5 (ZiftrCoin)\n\
   -d, --devices         Comma separated list of CUDA devices to use.\n\
                         Device IDs start counting from 0! Alternatively takes\n\
@@ -363,6 +424,8 @@ Options:\n\
   -u, --user=USERNAME   username for mining server\n\
   -p, --pass=PASSWORD   password for mining server\n\
       --cert=FILE       certificate for mining server using SSL\n\
+      --verthash-data=FILE  path to verthash.dat (verthash; default ./verthash.dat)\n\
+      --generate-verthash-dat  (re)create the verthash.dat at --verthash-data, then exit\n\
   -x, --proxy=[PROTOCOL://]HOST[:PORT]  connect through a proxy\n\
   -t, --threads=N       number of miner threads (default: number of nVidia GPUs)\n\
   -r, --retries=N       number of times to retry if a network call fails\n\
@@ -375,18 +438,19 @@ Options:\n\
                           long polling is unavailable, in seconds (default: 10)\n\
       --submit-stale    ignore stale jobs checks, may create more rejected shares\n\
       --eco             use eco mode (Lyra2REv2 only)\n\
-      --batch-size=N    Set custom batch size for GPU kernel (default: 524288)\n\
       --segwit          Agree with Segwit (Solo Mining only)\n\
       --coinbase-addr=ADDR  payout address for solo mining\n\
       --no-getwork      disable getwork support\n\
-      --yescrypt-param  set params(N,r,p) for yescrypt\n\
-      --yescrypt-key    set key for yescrypt\n\
+	  --yescrypt-param  set params(N,r,p) for yescrypt\n\
+	  --yescrypt-key    set key for yescrypt\n\
+	  --yespower-param  set params(N,r) for yespower (alias of --yescrypt-param)\n\
+	  --yespower-key    set key for yespower (alias of --yescrypt-key)\n\
   -n, --ndevs           list cuda devices\n\
   -N, --statsavg        number of samples used to compute hashrate (default: 30)\n\
       --no-gbt          disable getblocktemplate support (height check in solo)\n\
       --no-longpoll     disable X-Long-Polling support\n\
       --no-stratum      disable X-Stratum support\n\
-      --no-extranonce   disable extranonce subscribe on stratum\n\	  
+      --no-extranonce   disable extranonce subscribe on stratum\n\
   -q, --quiet           disable per-thread hashmeter output\n\
       --no-color        disable colored output\n\
   -D, --debug           enable debug output\n\
@@ -394,9 +458,16 @@ Options:\n\
       --cpu-affinity    set process affinity to cpu core(s), mask 0x3 for cores 0 and 1\n\
       --cpu-priority    set process priority (default: 3) 0 idle, 2 normal to 5 highest\n\
   -b, --api-bind=port   IP:port for the miner API (default: 127.0.0.1:4068), 0 disabled\n\
+      --api-mode=MODE   API protocol: binary (default), http, or both\n\
+      --api-token=TOK   require 'Authorization: Bearer TOK' on every HTTP route\n\
+      --api-cors=ORIG   value for Access-Control-Allow-Origin, enables OPTIONS\n\
+      --api-http-port=P serve HTTP on its own port instead of sniffing one port\n\
       --user-agent=NAME override the miner name sent to the pool (default: " USER_AGENT ")\n\
-      --api-remote      Allow remote control, like pool switching, imply --api-allow=0/0\n\
+      --api-remote      Allow remote control, like pool switching, imply --api-allow=W:0/0\n\
       --api-allow=...   IP/mask of the allowed api client(s), 0/0 for all\n\
+      --api-control     Allow the API to pause/resume/stop mining at runtime\n\
+      --api-control-min-interval=N  Seconds between accepted state changes (default: 15)\n\
+      --api-control-park-timeout=N  Milliseconds to wait for threads to idle (default: 30000)\n\
       --max-temp=N      Only mine if gpu temp is less than specified value\n\
       --max-rate=N[KMG] Only mine if net hashrate is less than specified value\n\
       --max-diff=N      Only mine if net difficulty is less than specified value\n\
@@ -449,6 +520,13 @@ struct option options[] = {
 	{ "api-mcast-code", 1, NULL, 1035 },
 	{ "api-mcast-port", 1, NULL, 1036 },
 	{ "api-mcast-des", 1, NULL, 1037 },
+	{ "api-mode", 1, NULL, 1211 },
+	{ "api-token", 1, NULL, 1212 },
+	{ "api-cors", 1, NULL, 1213 },
+	{ "api-http-port", 1, NULL, 1214 },
+	{ "api-control", 0, NULL, 1215 },
+	{ "api-control-min-interval", 1, NULL, 1216 },
+	{ "api-control-park-timeout", 1, NULL, 1217 },
 	{ "background", 0, NULL, 'B' },
 	{ "benchmark", 0, NULL, 1005 },
 	{ "cert", 1, NULL, 1001 },
@@ -513,6 +591,8 @@ struct option options[] = {
 	{ "shares-limit", 1, NULL, 1009 },
 	{ "time-limit", 1, NULL, 1008 },
 	{ "threads", 1, NULL, 't' },
+	{ "verthash-data", 1, NULL, 1099 },
+	{ "generate-verthash-dat", 0, NULL, 1210 },
 	{ "vote", 1, NULL, 1022 },
 	{ "trust-pool", 0, NULL, 1023 },
 	{ "timeout", 1, NULL, 'T' },
@@ -525,12 +605,14 @@ struct option options[] = {
 	{ "diff-factor", 1, NULL, 'f' },
 	{ "diff", 1, NULL, 'f' }, // compat
 	{ "eco", 0, NULL, 1081 },
-	{ "batch-size", 1, NULL, 1200 },
 	{ "coinbase-addr", 1, NULL, 1016 },
 	{ "no-getwork", 0, NULL, 1010 },
 	{ "segwit", 0, NULL, 1083 },
 	{ "yescrypt-param", 1, NULL, 1084 },
 	{ "yescrypt-key", 1, NULL, 1085 },
+	/* yespower reads the same two globals; both spellings are accepted */
+	{ "yespower-param", 1, NULL, 1084 },
+	{ "yespower-key", 1, NULL, 1085 },
 	{ "user-agent", 1, NULL, 1086 },
 	{ 0, 0, 0, 0 }
 };
@@ -556,7 +638,7 @@ CryptoNight specific options:\n\
   -l, --launch-config   gives the launch configuration for each kernel\n\
                         in a comma separated list, one per device.\n\
       --bfactor=[0-12]  Run Cryptonight core kernel in smaller pieces,\n\
-                        From 0 (ui freeze) to 12 (smooth), win default is 11\n\
+                        From 0 (ui freeze) to 12 (smooth), win default is 6\n\
                         This is a per-device setting like the launch config.\n\
 ";
 
@@ -657,6 +739,9 @@ void proper_exit(int reason)
 		return;
 
 	abort_flag = true;
+	/* Release parked threads before CUDA teardown and join the control
+	 * worker while its wait can still see abort_flag. */
+	api_ctl_shutdown();
 	usleep(200 * 1000);
 	cuda_shutdown();
 
@@ -692,6 +777,8 @@ void proper_exit(int reason)
 	free(opt_api_bind);
 	if (opt_api_allow) free(opt_api_allow);
 	if (opt_api_groups) free(opt_api_groups);
+	if (opt_api_token) free(opt_api_token);
+	if (opt_api_cors) free(opt_api_cors);
 	free(opt_api_mcast_addr);
 	free(opt_api_mcast_code);
 	free(opt_api_mcast_des);
@@ -724,62 +811,50 @@ bool jobj_binary(const json_t *obj, const char *key, void *buf, size_t buflen)
 /* compute nbits to get the network diff */
 static void calc_network_diff(struct work *work)
 {
-        // ðŸš¨ RINHASH FIX: Logic tÃ­nh toÃ¡n Ä‘á»™ khÃ³ máº¡ng chÃ­nh xÃ¡c cho RinHash
-        if (opt_algo == ALGO_RINHASH) {
-                // work->data[18] Ä‘Ã£ lÃ  Big-Endian (vÃ­ dá»¥: 0x1d0128f5)
-                // do Ä‘Ã£ Ä‘Æ°á»£c xá»­ lÃ½ trong stratum_gen_work
-                uint32_t nbits_be = work->data[18];
+	// RinHash: standard cpuminer-style nbits->network-diff calculation.
+	if (opt_algo == ALGO_RINHASH) {
+		uint32_t nbits_be = work->data[18]; // big-endian already (set in stratum_gen_work)
+		uint32_t shift = (nbits_be >> 24) & 0xff;
+		uint32_t bits = nbits_be & 0x00ffffff;
+		if (bits == 0) {
+			net_diff = 0.0;
+			return;
+		}
+		double d = (double)0x0000ffff / (double)bits;
+		for (int m = shift; m < 29; m++) d *= 256.0;
+		for (int m = 29; m < shift; m++) d /= 256.0;
+		net_diff = d;
+		if (opt_debug_diff)
+			applog(LOG_DEBUG, "net diff (RinHash): %f -> shift %u, bits %08x", d, shift, bits);
+		return;
+	}
+	// sample for diff 43.281 : 1c05ea29
+	// todo: endian reversed on longpoll could be zr5 specific...
+	uint32_t nbits = have_longpoll ? work->data[18] : swab32(work->data[18]);
+	if (opt_algo == ALGO_LBRY) nbits = swab32(work->data[26]);
+	if (opt_algo == ALGO_DECRED) nbits = work->data[29];
+	if (opt_algo == ALGO_SIA) nbits = work->data[11]; // unsure if correct
+	if (opt_algo == ALGO_EQUIHASH) {
+		net_diff = equi_network_diff(work);
+		return;
+	}
+	// Verus keeps the raw little-endian header bytes, so data[26] already has
+	// the exponent in its high byte; its pools use the Bitcoin diff-1 scale.
+	if (opt_algo == ALGO_VERUS) nbits = work->data[26];
 
-                // TÃ¡ch 4 bytes cá»§a 0x1d0128f5 ra:
-                uint32_t shift = (nbits_be >> 24) & 0xff; // Láº¥y byte Ä‘áº§u (0x1d)
-                uint32_t bits = nbits_be & 0x00ffffff; // Láº¥y 3 bytes sau (0x0128f5)
+	uint32_t bits = (nbits & 0xffffff);
+	int16_t shift = (swab32(nbits) & 0xff); // 0x1c = 28
 
-                // XÃ¡c thá»±c bits Ä‘á»ƒ trÃ¡nh chia cho 0
-                if (bits == 0) {
-                        net_diff = 0.0; // BÃ¡o lá»—i vÃ  Ä‘áº·t net_diff = 0
-                        return;
-                }
+	uint64_t diffone = 0x0000FFFF00000000ull;
+	double d = (double)0x0000ffff / (double)bits;
 
-                // Sá»­ dá»¥ng cÃ´ng thá»©c chuáº©n cá»§a cpuminer
-                double d = (double)0x0000ffff / (double)bits;
+	for (int m=shift; m < 29; m++) d *= 256.0;
+	for (int m=29; m < shift; m++) d /= 256.0;
+	if (opt_algo == ALGO_DECRED && shift == 28) d *= 256.0;
+	if (opt_debug_diff)
+		applog(LOG_DEBUG, "net diff: %f -> shift %u, bits %08x", d, shift, bits);
 
-                for (int m=shift; m < 29; m++) d *= 256.0;
-                for (int m=29; m < shift; m++) d /= 256.0;
-                
-                net_diff = d;
-
-                if (opt_debug_diff)
-                        applog(LOG_DEBUG, "net diff (RinHash): %f -> shift %u, bits %08x", d, shift, bits);
-
-                return; // ðŸš¨ QUAN TRá»ŒNG: Káº¿t thÃºc táº¡i Ä‘Ã¢y cho RinHash
-        }
-        
-        // --- Code bÃªn dÆ°á»›i chá»‰ cháº¡y cho cÃ¡c thuáº­t toÃ¡n khÃ¡c (logic cÅ©) ---
-
-        // sample for diff 43.281 : 1c05ea29
-        // todo: endian reversed on longpoll could be zr5 specific...
-        uint32_t nbits = have_longpoll ? work->data[18] : swab32(work->data[18]);
-        if (opt_algo == ALGO_LBRY) nbits = swab32(work->data[26]);
-        if (opt_algo == ALGO_DECRED) nbits = work->data[29];
-        if (opt_algo == ALGO_SIA) nbits = work->data[11]; // unsure if correct
-        if (opt_algo == ALGO_EQUIHASH) {
-                net_diff = equi_network_diff(work);
-                return;
-        }
-
-        uint32_t bits = (nbits & 0xffffff);
-        int16_t shift = (swab32(nbits) & 0xff); // 0x1c = 28
-
-        uint64_t diffone = 0x0000FFFF00000000ull;
-        double d = (double)0x0000ffff / (double)bits;
-
-        for (int m=shift; m < 29; m++) d *= 256.0;
-        for (int m=29; m < shift; m++) d /= 256.0;
-        if (opt_algo == ALGO_DECRED && shift == 28) d *= 256.0;
-        if (opt_debug_diff)
-                applog(LOG_DEBUG, "net diff: %f -> shift %u, bits %08x", d, shift, bits);
-
-        net_diff = d;
+	net_diff = d;
 }
 
 /* decode data from getwork (wallets and longpoll pools) */
@@ -895,10 +970,12 @@ static bool work_decode(const json_t *val, struct work *work)
 		if (!have_longpoll && work->height > net_blocks + 1) {
 			char netinfo[64] = { 0 };
 			if (opt_showdiff && net_diff > 0.) {
+				char nd[FORMAT_DIFF_LEN], pd[FORMAT_DIFF_LEN];
 				if (net_diff != work->targetdiff)
-					sprintf(netinfo, ", diff %.10f, pool %.3f", net_diff, work->targetdiff);
+					snprintf(netinfo, sizeof(netinfo), ", diff %s, pool %s", format_diff(net_diff, nd, sizeof(nd)),
+						format_diff(work->targetdiff, pd, sizeof(pd)));
 				else
-					sprintf(netinfo, ", diff %.8f", net_diff);
+					snprintf(netinfo, sizeof(netinfo), ", diff %s", format_diff(net_diff, nd, sizeof(nd)));
 			}
 			applog(LOG_BLUE, "%s block %d%s",
 				algo_names[opt_algo], work->height, netinfo);
@@ -938,8 +1015,10 @@ int share_result(int result, int pooln, double sharediff, const char *reason)
 	global_hashrate = llround(hashrate);
 
 	format_hashrate(hashrate, s);
-	if (opt_showdiff)
-		sprintf(suppl, "diff %.8f", sharediff);
+	if (opt_showdiff) {
+		char sd[FORMAT_DIFF_LEN];
+		snprintf(suppl, sizeof(suppl), "diff %s", format_diff(sharediff, sd, sizeof(sd)));
+	}
 	else // accepted percent
 		sprintf(suppl, "%.2f%%", 100. * p->accepted_count / (p->accepted_count + p->rejected_count));
 
@@ -970,6 +1049,83 @@ int share_result(int result, int pooln, double sharediff, const char *reason)
 	return 1;
 }
 
+/* Allocate the next submit id; once per submitted share. Non-static because
+ * xmr-rpc.cpp and equi-stratum.cpp build their own mining.submit. */
+uint32_t submit_id_next(void)
+{
+	uint32_t id;
+	pthread_mutex_lock(&submit_id_lock);
+	id = submit_seq++;
+	pthread_mutex_unlock(&submit_id_lock);
+	return id;
+}
+
+/* Remember the difficulty this id carried; the work is gone by response time. */
+void submit_id_remember(uint32_t id, double diff)
+{
+	pthread_mutex_lock(&submit_id_lock);
+	submit_ring[submit_ring_pos % SUBMIT_RING].id = id;
+	submit_ring[submit_ring_pos % SUBMIT_RING].diff = diff;
+	submit_ring_pos++;
+	pthread_mutex_unlock(&submit_id_lock);
+}
+
+/* Look an id up. Ids start at 10, so a zeroed slot never matches. A miss means
+ * the ring wrapped before the pool answered; the caller keeps its fallback. */
+static bool submit_id_lookup(uint32_t id, double *diff)
+{
+	bool hit = false;
+	pthread_mutex_lock(&submit_id_lock);
+	for (int i = 0; i < SUBMIT_RING; i++) {
+		if (submit_ring[i].id == id) {
+			*diff = submit_ring[i].diff;
+			hit = true;
+			break;
+		}
+	}
+	pthread_mutex_unlock(&submit_id_lock);
+
+	if (!hit) {
+		static uint32_t misses = 0;
+		misses++;
+		if (opt_debug)
+			applog(LOG_DEBUG, "submit id %u not in ring (ring wrapped before "
+				"the pool answered); displayed diff is another share's -- "
+				"%u so far", id, misses);
+	}
+	return hit;
+}
+
+/* Verus: is a found share still valid at the pool? If the newest job has a
+ * different id and clean_jobs set, the old id is gone: a re-issue with the same
+ * hashed bytes is resubmitted under the new id, anything else is stale. */
+static bool verus_share_current(struct work *w)
+{
+	bool ok = true;
+	pthread_mutex_lock(&stratum_work_lock);
+	const char *cur = stratum.job.job_id;
+	if (cur && strcmp(w->job_id + 8, cur) && stratum.job.clean && !opt_submit_stale && !submit_old) {
+		bool same = stratum.job.coinbase && stratum.job.coinbase_size >= 64 &&
+		            stratum.job.verus_sol_len == VERUS_SOL_FIXED_LEN && w->extra[0] == 0xfd &&
+		            w->data[0] == le32dec(stratum.job.version) &&
+		            w->data[25] == le32dec(stratum.job.ntime) &&
+		            w->data[26] == le32dec(stratum.job.nbits) &&
+		            !memcmp(&w->data[9], stratum.job.coinbase, 64) &&
+		            !memcmp(w->extra + 3, stratum.job.verus_solution, VERUS_SOL_FIXED_LEN);
+		for (int i = 0; same && i < 8; i++)
+			same = w->data[1 + i] == le32dec((uint32_t *) stratum.job.prevhash + i);
+		if (same) {
+			if (opt_debug)
+				applog(LOG_DEBUG, "share of job %s sent as job %s (same work)", w->job_id + 8, cur);
+			snprintf(w->job_id, sizeof(w->job_id), "%07x %s",
+			         be32dec(stratum.job.ntime) & 0xfffffff, cur);
+		} else
+			ok = false;
+	}
+	pthread_mutex_unlock(&stratum_work_lock);
+	return ok;
+}
+
 static bool submit_upstream_work(CURL *curl, struct work *work)
 {
 	char s[512];
@@ -992,6 +1148,12 @@ static bool submit_upstream_work(CURL *curl, struct work *work)
 	if (pool->type & POOL_STRATUM && stratum.is_equihash) {
 		struct work submit_work;
 		memcpy(&submit_work, work, sizeof(struct work));
+		if (opt_algo == ALGO_VERUS && !verus_share_current(&submit_work)) {
+			pool->stales_count++;
+			if (!opt_quiet)
+				applog(LOG_INFO, "stale share dropped (job %s replaced)", work->job_id + 8);
+			return true;
+		}
 		//if (!hashlog_already_submittted(submit_work.job_id, submit_work.nonces[idnonce])) {
 			if (equi_stratum_submit(pool, &submit_work))
 				hashlog_remember_submit(&submit_work, submit_work.nonces[idnonce]);
@@ -1044,6 +1206,83 @@ static bool submit_upstream_work(CURL *curl, struct work *work)
 		uint32_t ntime, nonce = work->nonces[idnonce];
 		char *ntimestr, *noncestr, *xnonce2str, *nvotestr;
 		uint16_t nvote = 0;
+		const uint32_t sub_id = submit_id_next();
+
+		// KawPoW-family: ethproxy mining.submit [worker, job_id, nonce(16hex),
+		// header_hash, mixhash]. nonce is the full 64-bit value (big-endian hex)
+		// beginning with the pool's extranonce prefix; the pool re-derives the hash
+		// from header + nonce + mixhash and checks it against the share target.
+		if (is_progpow_algo(opt_algo)) {
+			uint8_t noncebe[8];
+			for (int b = 0; b < 8; b++)
+				noncebe[b] = (uint8_t)(work->kawpow_nonce >> (56 - 8 * b));
+			char *noncestr = bin2hex(noncebe, 8);
+			char *hhstr    = bin2hex(work->kawpow_header, 32);
+			char *mixstr   = bin2hex(work->kawpow_mix, 32);
+			stratum.sharediff = work->sharediff[idnonce];
+			submit_id_remember(sub_id, stratum.sharediff);
+			snprintf(s, sizeof(s), "{\"method\": \"mining.submit\", \"params\": ["
+				"\"%s\", \"%s\", \"0x%s\", \"0x%s\", \"0x%s\"], \"id\":%u}",
+				pool->user, work->job_id + 8, noncestr, hhstr, mixstr,
+				sub_id);
+			free(noncestr); free(hhstr); free(mixstr);
+			gettimeofday(&stratum.tv_submit, NULL);
+			if (unlikely(!stratum_send_line(&stratum, s))) {
+				applog(LOG_ERR, "submit_upstream_work stratum_send_line failed");
+				return false;
+			}
+			stratum.job.shares_count++;
+			return true;
+		}
+
+		// Pearl: mining.submit {job_id, plain_proof}; nonces[] holds a proof-stash id
+		if (opt_algo == ALGO_PEARLHASH) {
+			char *proof = pearl_proof_take(nonce);
+			if (!proof) {
+				applog(LOG_ERR, "pearlhash: proof %u not in the stash, share dropped", nonce);
+				return true;
+			}
+			const size_t len = strlen(proof) + strlen(work->job_id + 8) + 128;
+			char *line = (char*)malloc(len);
+			stratum.sharediff = work->sharediff[idnonce];
+			submit_id_remember(sub_id, stratum.sharediff);
+			snprintf(line, len, "{\"id\": %u, \"method\": \"mining.submit\", \"params\": "
+				"{\"job_id\": \"%s\", \"plain_proof\": \"%s\"}}", sub_id, work->job_id + 8, proof);
+			free(proof);
+			gettimeofday(&stratum.tv_submit, NULL);
+			const bool sent_ok = stratum_send_line(&stratum, line);
+			free(line);
+			if (unlikely(!sent_ok)) {
+				applog(LOG_ERR, "submit_upstream_work stratum_send_line failed");
+				return false;
+			}
+			stratum.job.shares_count++;
+			return true;
+		}
+
+		// Veil SHA256Dv: bespoke mining.submit carrying (nonce_hi, ntime, nonce_lo).
+		if (opt_algo == ALGO_SHA256DV) {
+			uint32_t v_ntime, v_hi, v_lo;
+			le32enc(&v_ntime, work->veil_ntime);
+			le32enc(&v_hi,    work->veil_nonce_hi);
+			le32enc(&v_lo,    work->veil_nonce_lo);
+			char *ntimes = bin2hex((const uchar*)&v_ntime, 4);
+			char *histr  = bin2hex((const uchar*)&v_hi, 4);
+			char *lostr  = bin2hex((const uchar*)&v_lo, 4);
+			stratum.sharediff = work->sharediff[idnonce];
+			submit_id_remember(sub_id, stratum.sharediff);
+			sprintf(s, "{\"method\": \"mining.submit\", \"params\": ["
+				"\"%s\", \"%s\", \"%s\", \"%s\", \"%s\"], \"id\":%u}",
+				pool->user, work->job_id + 8, histr, ntimes, lostr, sub_id);
+			free(ntimes); free(histr); free(lostr);
+			gettimeofday(&stratum.tv_submit, NULL);
+			if (unlikely(!stratum_send_line(&stratum, s))) {
+				applog(LOG_ERR, "submit_upstream_work stratum_send_line failed");
+				return false;
+			}
+			stratum.job.shares_count++;
+			return true;
+		}
 
 		switch (opt_algo) {
 		case ALGO_BLAKE:
@@ -1061,9 +1300,11 @@ static bool submit_upstream_work(CURL *curl, struct work *work)
 			le32enc(&nonce, work->data[19]);
 			break;
 		case ALGO_DECRED:
+			// Raw little-endian header bytes, hex-encoded verbatim: bin2hex prints
+			// memory order, so ntime/nonce must not be byte-swapped here.
 			be16enc(&nvote, *((uint16_t*)&work->data[25]));
-			be32enc(&ntime, work->data[34]);
-			be32enc(&nonce, work->data[35]);
+			le32enc(&ntime, work->data[34]);
+			le32enc(&nonce, work->data[35]);
 			break;
 		case ALGO_HEAVY:
 			le32enc(&ntime, work->data[17]);
@@ -1087,6 +1328,22 @@ static bool submit_upstream_work(CURL *curl, struct work *work)
 		case ALGO_RINHASH:
 			check_dups = true;
 			be32enc(&ntime, work->data[17]);
+			be32enc(&nonce, work->data[19]);
+			break;
+		case ALGO_ODO:
+			// odo hashes the nonce little-endian (matching cpuminer / the pool),
+			// so the submit nonce is big-endian (the pool reverses it back to LE);
+			// ntime keeps the standard little-endian encoding.
+			check_dups = true;
+			le32enc(&ntime, work->data[17]);
+			be32enc(&nonce, work->data[19]);
+			break;
+		case ALGO_VERTHASH:
+			// Verthash hashes the raw nonce counter little-endian (cpuminer-opt
+			// edata[19]=n, no swap), so the submit nonce is big-endian -- same as
+			// odo. ntime stays little-endian.
+			check_dups = true;
+			le32enc(&ntime, work->data[17]);
 			be32enc(&nonce, work->data[19]);
 			break;
 		default:
@@ -1113,7 +1370,13 @@ static bool submit_upstream_work(CURL *curl, struct work *work)
 		ntimestr = bin2hex((const uchar*)(&ntime), 4);
 
 		if (opt_algo == ALGO_DECRED) {
-			xnonce2str = bin2hex((const uchar*)&work->data[36], stratum.xnonce1_size);
+			// extraNonce2 is header offset 148 = data[37], always 4 bytes. Offset 144
+			// (data[36]) is the pool's extranonce1 and goes back unchanged.
+			xnonce2str = bin2hex((const uchar*)&work->data[37], 4);
+			if (opt_debug)
+				applog(LOG_DEBUG, "decred submit: en1(d36)=%08x en2(d37)=%08x"
+					" ntime(d34)=%08x nonce(d35)=%08x",
+					work->data[36], work->data[37], work->data[34], work->data[35]);
 		} else if (opt_algo == ALGO_SIA) {
 			uint16_t high_nonce = swab32(work->data[9]) >> 16;
 			xnonce2str = bin2hex((unsigned char*)(&high_nonce), 2);
@@ -1123,26 +1386,26 @@ static bool submit_upstream_work(CURL *curl, struct work *work)
 
 		// store to keep/display the solved ratio/diff
 		stratum.sharediff = work->sharediff[idnonce];
+		submit_id_remember(sub_id, stratum.sharediff);
 
+		char sdiff_s[FORMAT_DIFF_LEN];
 		if (net_diff && stratum.sharediff > net_diff && (opt_debug || opt_debug_diff))
-			applog(LOG_INFO, "share diff: %.5f, possible block found!!!",
-				stratum.sharediff);
+			applog(LOG_INFO, "share diff: %s, possible block found!!!",
+				format_diff(stratum.sharediff, sdiff_s, sizeof(sdiff_s)));
 		else if (opt_debug_diff)
-			applog(LOG_DEBUG, "share diff: %.5f (x %.1f)",
-				stratum.sharediff, work->shareratio[idnonce]);
+			applog(LOG_DEBUG, "share diff: %s (x %.1f)",
+				format_diff(stratum.sharediff, sdiff_s, sizeof(sdiff_s)), work->shareratio[idnonce]);
 
 		if (opt_vote) { // ALGO_HEAVY
 			nvotestr = bin2hex((const uchar*)(&nvote), 2);
 			sprintf(s, "{\"method\": \"mining.submit\", \"params\": ["
 					"\"%s\", \"%s\", \"%s\", \"%s\", \"%s\", \"%s\"], \"id\":%u}",
-					pool->user, work->job_id + 8, xnonce2str, ntimestr, noncestr, nvotestr, stratum.job.shares_count + 10);
+					pool->user, work->job_id + 8, xnonce2str, ntimestr, noncestr, nvotestr, sub_id);
 			free(nvotestr);
-		}
-		else 
-		{
+		} else {
 			sprintf(s, "{\"method\": \"mining.submit\", \"params\": ["
 					"\"%s\", \"%s\", \"%s\", \"%s\", \"%s\"], \"id\":%u}",
-					pool->user, work->job_id + 8, xnonce2str, ntimestr, noncestr, stratum.job.shares_count + 10);
+					pool->user, work->job_id + 8, xnonce2str, ntimestr, noncestr, sub_id);
 		}
 		free(xnonce2str);
 		free(ntimestr);
@@ -1234,7 +1497,8 @@ static bool gbt_work_decode(const json_t *val, struct work *work)
 				if (net_diff > 0.) {
 					char netinfo[64] = { 0 };
 					char srate[32] = { 0 };
-					sprintf(netinfo, "diff %.8f", net_diff);
+					char nd[FORMAT_DIFF_LEN];
+					snprintf(netinfo, sizeof(netinfo), "diff %s", format_diff(net_diff, nd, sizeof(nd)));
 					if (net_hashrate) {
 						format_hashrate((double) net_hashrate, srate);
 						strcat(netinfo, ", net ");
@@ -1479,6 +1743,13 @@ static bool workio_submit_work(struct workio_cmd *wc, CURL *curl)
 	uint32_t pooln = wc->pooln;
 	// applog(LOG_DEBUG, "%s: pool %d", __func__, wc->pooln);
 
+	/* A queued share can predate a pool switch. submit_upstream_work() sends on the global
+	 * stratum, already repointed by pool_switch(), so it would land on the new pool. */
+	if (pooln != cur_pooln) {
+		applog(LOG_DEBUG, "share for pool %u dropped, pool switched to %d", pooln, cur_pooln);
+		return true;
+	}
+
 	/* submit solution to bitcoin via JSON-RPC */
 	while (!submit_upstream_work(curl, wc->u.work)) {
 		if (pooln != cur_pooln) {
@@ -1539,7 +1810,9 @@ static void *workio_thread(void *userdata)
 			break;
 		}
 
-		if (!ok && num_pools > 1 && opt_pool_failover) {
+		/* A deliberate abort is not a dead pool: WC_ABORT sets ok=false, and failing
+	 * over on it switches pools while the miner is tearing down. */
+	if (!ok && wc->cmd != WC_ABORT && !abort_flag && num_pools > 1 && opt_pool_failover) {
 			if (opt_debug_threads)
 				applog(LOG_DEBUG, "%s died, failover", __func__);
 			ok = pool_switch_next(-1);
@@ -1656,7 +1929,7 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 		return rpc2_stratum_gen_work(sctx, work);
 
 	if (!sctx->job.job_id) {
-		// applog(LOG_WARNING, "stratum_gen_work: job not yet retrieved");
+		// applog(LOG_WARNING, "stratum_gen_work(): job not yet retrieved");
 		return false;
 	}
 
@@ -1666,19 +1939,59 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 	snprintf(work->job_id, sizeof(work->job_id), "%07x %s",
 		be32dec(sctx->job.ntime) & 0xfffffff, sctx->job.job_id);
 	work->xnonce2_len = sctx->xnonce2_size;
-	memcpy(work->xnonce2, sctx->job.xnonce2, sctx->xnonce2_size);
+	// Bespoke jobs (e.g. SHA256Dv/Veil) supply a finished midstate and carry no
+	// coinbase, so sctx->job.xnonce2 is NULL even though the pool advertised an
+	// xnonce2 size at subscribe time. Guard the copy against that NULL.
+	if (sctx->job.xnonce2)
+		memcpy(work->xnonce2, sctx->job.xnonce2, sctx->xnonce2_size);
 
 	// also store the block number
 	work->height = sctx->job.height;
+	/* Set true only by the ProgPoW branch below. sctx->job.is_kawpow is set-only
+	 * and the stratum struct survives a pool switch, so leaving it alone let a
+	 * ProgPoW scan accept another algo's job and size its DAG from that height. */
+	work->is_kawpow = false;
 	// and the pool of the current stratum
 	work->pooln = sctx->pooln;
+
+	if (opt_algo == ALGO_PEARLHASH) {
+		// Pearl: raw 76-byte header, data[19] = trial cursor
+		memset(work->data, 0, sizeof(work->data));
+		memcpy(work->data, sctx->job.pearl_header, 76);
+		work->data[19] = 0;
+		work->is_pearl = sctx->job.pearl_job;
+		memcpy(work->pearl_target, sctx->job.pearl_target, sizeof(work->pearl_target));
+		work->targetdiff = sctx->job.diff;
+		pthread_mutex_unlock(&stratum_work_lock);
+		return true;
+	}
+
+	if (opt_algo == ALGO_HOMESCRYPT && sctx->job.lmt_job) {
+		// Lumenite pools send the finished header. Store each word as the
+		// big-endian decode of the wire so scanhash's be32enc restores it; ntime
+		// (data[17]) and the nonce then submit on the default path.
+		memset(work->data, 0, sizeof(work->data));
+		for (i = 0; i < 20; i++)
+			work->data[i] = be32dec(sctx->job.lmt_header + 4 * i);
+		work->data[19] = 0;
+		memcpy(work->xnonce2, sctx->job.lmt_xnonce2, sctx->job.lmt_xnonce2_len);
+		work->xnonce2_len = sctx->job.lmt_xnonce2_len;
+		goto header_done;
+	}
 
 	/* Generate merkle root */
 	switch (opt_algo) {
 		case ALGO_DECRED:
 		case ALGO_EQUIHASH:
+		case ALGO_VERUS:
 		case ALGO_SIA:
-			// getwork over stratum, no merkle to generate
+		case ALGO_SHA256DV:
+		case ALGO_KAWPOW:
+		case ALGO_MEOWPOW:
+		case ALGO_EVRPROGPOW:
+		case ALGO_FIROPOW:
+		case ALGO_MERAKI:
+			// getwork over stratum / pool-supplied midstate, no merkle to generate
 			break;
 #ifdef WITH_HEAVY_ALGO
 		case ALGO_HEAVY:
@@ -1694,6 +2007,10 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 			SHA256((uchar*)sctx->job.coinbase, sctx->job.coinbase_size, (uchar*)merkle_root);
 			break;
 		case ALGO_SHA3D:
+		case ALGO_FLEX:
+			// flex's merkle leaf is sha3d (double SHA3-256, 0x06 padding) over
+			// the coinbase; the branch loop below then uses sha256d, exactly as
+			// the Kylacoin reference does.
 			sha3d(merkle_root, sctx->job.coinbase, (int)sctx->job.coinbase_size);
 			break;
 		case ALGO_GOSTCOIN:
@@ -1721,7 +2038,8 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 	}
 	
 	/* Increment extranonce2 */
-	for (i = 0; i < (int)sctx->xnonce2_size && !++sctx->job.xnonce2[i]; i++);
+	if (sctx->job.xnonce2)
+		for (i = 0; i < (int)sctx->xnonce2_size && !++sctx->job.xnonce2[i]; i++);
 
 	/* Assemble block header */
 	memset(work->data, 0, sizeof(work->data));
@@ -1731,10 +2049,15 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 
 	if (opt_algo == ALGO_DECRED) {
 		uint16_t vote;
-		for (i = 0; i < 8; i++) // reversed prevhash
-			work->data[1 + i] = swab32(work->data[1 + i]);
-		// decred header (coinb1) [merkle...nonce]
-		memcpy(&work->data[9], sctx->job.coinbase, 108);
+		// prevhash is used verbatim: stratum sends it in internal byte order.
+		// coinb1 is 144 B for decred -- the whole rest of the header, data[9..44].
+		if (sctx->job.coinbase_size < 144) {
+			applog(LOG_ERR, "decred: coinb1 is %u bytes, expected >= 144",
+				(uint32_t) sctx->job.coinbase_size);
+			pthread_mutex_unlock(&stratum_work_lock);
+			return false;
+		}
+		memcpy(&work->data[9], sctx->job.coinbase, 144);
 		// last vote bit should never be changed
 		memcpy(&vote, &work->data[25], 2);
 		vote = (opt_vote << 1) | (vote & 1);
@@ -1746,9 +2069,10 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 			sctx->xnonce1_size = sizeof(work->data)-(32*4);
 		}
 		memcpy(&work->data[36], sctx->xnonce1, sctx->xnonce1_size);
-		work->data[37] = (rand()*4) << 8; // random work data
-		// block header suffix from coinb2 (stake version)
-		memcpy(&work->data[44], &sctx->job.coinbase[sctx->job.coinbase_size-4], 4);
+		// data[36] (offset 144) is the pool's extranonce1, returned unchanged.
+		// data[37] (offset 148) is our extranonce2 and the field the submit echoes;
+		// the miner thread rolls it. data[38..43] stay zero; data[44] (stake
+		// version) comes from the coinb1 copy above.
 		sctx->job.height = work->data[32];
 		//applog_hex(work->data, 180);
 	} else if (opt_algo == ALGO_RINHASH) {
@@ -1756,15 +2080,27 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 		for (i = 0; i < 8; i++) // reversed prevhash
 			work->data[1 + i] = swab32(work->data[1 + i]);
 		memcpy(&work->data[9], merkle_root, 32);
-		work->data[ 17 ] = swab32(le32dec(sctx->job.ntime));
-		work->data[ 18 ] = swab32(le32dec(sctx->job.nbits));
-		work->data[ 19 ] = 0;
-	} else if (opt_algo == ALGO_EQUIHASH) {
+		work->data[17] = swab32(le32dec(sctx->job.ntime));
+		work->data[18] = swab32(le32dec(sctx->job.nbits));
+		work->data[19] = 0;
+	} else if (opt_algo == ALGO_EQUIHASH || opt_algo == ALGO_VERUS) {
 		memcpy(&work->data[9], sctx->job.coinbase, 32+32); // merkle [9..16] + reserved
 		work->data[25] = le32dec(sctx->job.ntime);
 		work->data[26] = le32dec(sctx->job.nbits);
 		memcpy(&work->data[27], sctx->xnonce1, sctx->xnonce1_size & 0x1F); // pool extranonce
-		work->data[35] = 0x80;
+		if (opt_algo == ALGO_EQUIHASH)
+			work->data[35] = 0x80;
+		else {
+			// Verus: the pool's solution template, as CompactSize + bytes. The
+			// miner varies only its last 15 bytes (algos/verus/verus.cu).
+			memset(work->extra, 0, sizeof(work->extra));
+			if (sctx->job.verus_sol_len) {
+				work->extra[0] = 0xfd;
+				work->extra[1] = (uint8_t) (sctx->job.verus_sol_len & 0xff);
+				work->extra[2] = (uint8_t) (sctx->job.verus_sol_len >> 8);
+				memcpy(work->extra + 3, sctx->job.verus_solution, sctx->job.verus_sol_len);
+			}
+		}
 		//applog_hex(work->data, 140);
 	} else if (opt_algo == ALGO_LBRY) {
 		for (i = 0; i < 8; i++)
@@ -1794,6 +2130,48 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 		work->data[18] = le32dec(sctx->job.nbits);
 		work->data[20] = 0x80000000;
 		work->data[31] = (opt_algo == ALGO_MJOLLNIR) ? 0x000002A0 : 0x00000280;
+	} else if (opt_algo == ALGO_SHA256DV) {
+		// Veil SHA256Dv: pool-supplied midstate/merkle; no header to assemble.
+		// work->data[0] already holds le32dec(version).
+		work->veil_sha256dv = sctx->job.veil_sha256dv;
+		memcpy(work->veil_midstate_be, sctx->job.veil_midstate_be, 32);
+		memcpy(work->veil_merkle_be,   sctx->job.veil_merkle_be,   32);
+		work->veil_ntime    = sctx->job.veil_ntime;
+		work->veil_nonce_hi = sctx->job.veil_nonce_hi;
+		work->veil_nonce_lo = 0;
+		work->data[17] = sctx->job.veil_ntime;        // for debug/diff display only
+		work->data[18] = le32dec(sctx->job.nbits);    // for calc_network_diff only
+		work->data[19] = 0;                           // nonce_lo cursor
+	} else if (is_progpow_algo(opt_algo)) {
+		// KawPoW-family: pool supplies the ProgPoW header_hash + 256-bit target; no
+		// header to assemble. Height selects the epoch/period; the nonce prefix is
+		// fixed by extranonce1. scanhash searches the low 48 bits (see algos/kawpow/
+		// and algos/progpow_multi/).
+		work->is_kawpow = sctx->job.is_kawpow;
+		memcpy(work->kawpow_header, sctx->job.kawpow_header, 32);
+		memcpy(work->kawpow_target, sctx->job.kawpow_target, 32);
+		work->kawpow_prefix = sctx->job.kawpow_prefix;
+		work->data[18] = le32dec(sctx->job.nbits);    // for calc_network_diff only
+		work->data[19] = 0;
+	} else if (opt_algo == ALGO_YESPOWEREQPAY) {
+		// EqPay hashes 181 bytes: the usual header plus the EVM state roots and
+		// the proof-of-stake fields. No 0x80000000 at data[20] -- byte offset 80
+		// is hashStateRoot here, not SHA-256 padding.
+		for (i = 0; i < 8; i++)
+			work->data[9 + i] = be32dec((uint32_t *)merkle_root + i);
+		work->data[17] = le32dec(sctx->job.ntime);
+		work->data[18] = le32dec(sctx->job.nbits);
+		work->data[19] = 0;
+		// Store the tail as the BIG-ENDIAN DECODE of the wire, like words 0..18,
+		// so scanhash's one be32enc() loop reproduces the wire for all 46 words.
+		// Raw wire bytes here would byte-swap the tail on the GPU side only.
+		// Roots arrive with each word byte-swapped: be32dec(wire) == le32dec(recv).
+		for (i = 0; i < 16; i++)
+			work->data[20 + i] = le32dec(sctx->job.eqpay_roots + i * 4);
+		for (i = 0; i < 8; i++)
+			work->data[36 + i] = 0;             // prevoutStake.hash: null for PoW
+		work->data[44] = 0xffffffff;            // prevoutStake.n = NULL_INDEX
+		work->data[45] = 0;                     // empty vchBlockSigDlgt length
 	} else {
 		for (i = 0; i < 8; i++)
 			work->data[9 + i] = be32dec((uint32_t *)merkle_root + i);
@@ -1803,6 +2181,7 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 		work->data[31] = (opt_algo == ALGO_MJOLLNIR) ? 0x000002A0 : 0x00000280;
 	}
 
+header_done:
 	if (opt_showdiff || opt_max_diff > 0.)
 		calc_network_diff(work);
 
@@ -1826,7 +2205,8 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 
 	pthread_mutex_unlock(&stratum_work_lock);
 
-	if (opt_debug && opt_algo != ALGO_DECRED && opt_algo != ALGO_EQUIHASH && opt_algo != ALGO_SIA) {
+	if (opt_debug && opt_algo != ALGO_DECRED && opt_algo != ALGO_EQUIHASH && opt_algo != ALGO_VERUS &&
+	    opt_algo != ALGO_SIA) {
 		uint32_t utm = work->data[17];
 		if (opt_algo != ALGO_ZR5) utm = swab32(utm);
 		char *tm = atime2str(utm - sctx->srvtime_diff);
@@ -1845,9 +2225,8 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 		case ALGO_ARGON2D1000:
 		case ALGO_ARGON2D4096:
 		case ALGO_ARGON2D16000:
-		case ALGO_GHOSTRIDER:
+		case ALGO_ARGON2ID1024:
 		case ALGO_HMQ1725:
-		case ALGO_HOOHASH:
 		case ALGO_JACKPOT:
 		case ALGO_JHA:
 		case ALGO_NEOSCRYPT:
@@ -1860,6 +2239,13 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 		case ALGO_YESCRYPTR16V2:
 		case ALGO_YESCRYPTR24:
 		case ALGO_YESCRYPTR32:
+		// yespower shares the yescrypt/scrypt difficulty scale: difficulty-1 is
+		// ~65536 expected hashes, not Bitcoin's 2^32.  Measured against the CPU
+		// sibling on the same job: ~380 hashes per share at stratum diff 0.006.
+		case ALGO_YESPOWER:
+		case ALGO_YESPOWERR16:
+		case ALGO_POWER2B:
+		case ALGO_YESPOWEREQPAY:
 			work_set_target(work, sctx->job.diff / (65536.0 * opt_difficulty));
 			break;
 		case ALGO_DMD_GR:
@@ -1870,6 +2256,7 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 		case ALGO_LBRY:
 		case ALGO_LYRA2v2:
 		case ALGO_LYRA2Z:
+		case ALGO_LYRA2Z330:
 		case ALGO_ALLIUM:
 		case ALGO_TIMETRAVEL:
 		case ALGO_BITCORE:
@@ -1879,13 +2266,27 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 		case ALGO_X16RV2:
 		case ALGO_X16S:
 		case ALGO_X21S:
+		case ALGO_VERTHASH:  // opt_target_factor 256 (cpuminer-opt verthash-gate)
 			work_set_target(work, sctx->job.diff / (256.0 * opt_difficulty));
 			break;
-		case ALGO_EVOHASH:
 		case ALGO_RINHASH:
+		case ALGO_EVOHASH:
+		case ALGO_ODO:
 		case ALGO_SKYDOGE:
-		case ALGO_SHA3D:
 			work_set_target(work, sctx->job.diff / opt_difficulty);
+			break;
+		case ALGO_GHOSTRIDER:
+		case ALGO_MIKE:
+			// GhostRider/Raptoreum: hash difficulty carries a 2^16 factor
+			// (cpuminer-opt opt_target_factor = 65536). Verify on live pool.
+			// mike (VKAX/FortuneBlock) shares it: VKAX's powLimit is
+			// byte-identical to Raptoreum's, and the CPU port confirmed the
+			// convention live at two stratum difficulties.
+		case ALGO_HOOHASH:
+			// hoohash (PEPEPOW) uses the same 2^16 factor as its own reference
+			// miner. Without it the pool target lands harder than the network
+			// target and the miner submits almost nothing.
+			work_set_target(work, sctx->job.diff / (65536.0 * opt_difficulty));
 			break;
 		case ALGO_KECCAK:
 		case ALGO_LYRA2:
@@ -1894,17 +2295,46 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 		case ALGO_EQUIHASH:
 			equi_work_set_target(work, sctx->job.diff / opt_difficulty);
 			break;
+		case ALGO_VERUS:
+			// the pool's exact 256-bit target; the difficulty only as fallback
+			if (sctx->job.has_verus_target && opt_difficulty == 1.) {
+				for (i = 0; i < 8; i++)
+					work->target[7 - i] = be32dec(sctx->job.verus_target + 4 * i);
+				work->targetdiff = target_to_diff(work->target);
+			} else
+				work_set_target(work, sctx->job.diff / opt_difficulty);
+			break;
+		case ALGO_KAWPOW:
+		case ALGO_MEOWPOW:
+		case ALGO_EVRPROGPOW:
+		case ALGO_FIROPOW:
+		case ALGO_MERAKI:
+			// Pool sends the 256-bit share target directly (MSB-first bytes);
+			// mirror it into work->target (LE words, target[7] = MSW). scanhash
+			// compares against work->kawpow_target. targetdiff is the pool's
+			// share difficulty (set_difficulty), consistent with that target, so
+			// bn_set_target_ratio yields a real share diff for --show-diff.
+			for (i = 0; i < 8; i++)
+				work->target[7 - i] = be32dec(work->kawpow_target + 4 * i);
+			// Derive the share difficulty from the 256-bit target itself (these
+			// pools use mining.set_target, not a numeric mining.set_difficulty, so
+			// sctx->job.diff would otherwise be stuck at its default of 1).
+			work->targetdiff = target_to_diff(work->target);
+			break;
+		case ALGO_SHA3D:
 		default:
 			work_set_target(work, sctx->job.diff / opt_difficulty);
 	}
 
 	if (stratum_diff != sctx->job.diff) {
 		char sdiff[32] = { 0 };
+		char sd[FORMAT_DIFF_LEN], td[FORMAT_DIFF_LEN];
 		// store for api stats
 		stratum_diff = sctx->job.diff;
 		if (opt_showdiff && work->targetdiff != stratum_diff)
-			snprintf(sdiff, 32, " (%.6f)", work->targetdiff);
-		applog(LOG_WARNING, "Stratum difficulty set to %g%s", stratum_diff, sdiff);
+			snprintf(sdiff, sizeof(sdiff), " (%s)", format_diff(work->targetdiff, td, sizeof(td)));
+		applog(LOG_WARNING, "Stratum difficulty set to %s%s",
+			format_diff(stratum_diff, sd, sizeof(sd)), sdiff);
 	}
 
 	return true;
@@ -1924,13 +2354,18 @@ static bool wanna_mine(int thr_id)
 	bool state = true;
 	bool allow_pool_rotate = (thr_id == 0 && num_pools > 1 && !pool_is_switching);
 
+	/* Runtime control (docs/api-rest.md section 7): first and unconditional, so
+	 * a paused miner idles regardless of every other condition. */
+	if (api_ctl_wants_pause())
+		return false;
+
 	if (opt_max_temp > 0.0) {
 #ifdef USE_WRAPNVML
 		struct cgpu_info * cgpu = &thr_info[thr_id].gpu;
 		float temp = gpu_temp(cgpu);
 		if (temp > opt_max_temp) {
 			if (!conditional_state[thr_id] && !opt_quiet)
-				gpulog(LOG_INFO, thr_id, "temperature too high (%.0fÃ‚Â°c), waiting...", temp);
+				gpulog(LOG_INFO, thr_id, "temperature too high (%.0f°c), waiting...", temp);
 			state = false;
 		} else if (opt_max_temp > 0. && opt_resume_temp > 0. && conditional_state[thr_id] && temp > opt_resume_temp) {
 			if (!thr_id && opt_debug)
@@ -1976,6 +2411,7 @@ static void *miner_thread(void *userdata)
 {
 	struct thr_info *mythr = (struct thr_info *)userdata;
 	int switchn = pool_switch_count;
+	int algo_gen_seen = algo_switch_gen;
 	int thr_id = mythr->id;
 	int dev_id = device_map[thr_id % MAX_GPUS];
 	struct cgpu_info * cgpu = &thr_info[thr_id].gpu;
@@ -1984,6 +2420,7 @@ static void *miner_thread(void *userdata)
 	uint32_t max_nonce;
 	uint32_t end_nonce = UINT32_MAX / opt_n_threads * (thr_id + 1) - (thr_id + 1);
 	time_t tm_rate_log = 0;
+	time_t tm_total_log = 0;
 	bool work_done = false;
 	bool extrajob = false;
 	char s[16];
@@ -2068,7 +2505,7 @@ static void *miner_thread(void *userdata)
 		} else if (opt_algo == ALGO_CRYPTOLIGHT || opt_algo == ALGO_CRYPTONIGHT) {
 			nonceptr = (uint32_t*) (((char*)work.data) + 39);
 			wcmplen = 39;
-		} else if (opt_algo == ALGO_EQUIHASH) {
+		} else if (opt_algo == ALGO_EQUIHASH || opt_algo == ALGO_VERUS) {
 			nonceptr = &work.data[EQNONCE_OFFSET]; // 27 is pool extranonce (256bits nonce space)
 			// 108 = version+prevhash+merkle+hashReserved+nTime+nBits, i.e. the whole header up
 			// to the 256-bit nonce space (data[27..34]). The old 68 only compared
@@ -2080,15 +2517,31 @@ static void *miner_thread(void *userdata)
 		if (have_stratum) {
 			uint32_t sleeptime = 0;
 
+			// Out of nonce range? Decided once, used for both the wait and regen.
+			bool range_done = (nonceptr[0] >= end_nonce);
+			if (opt_algo == ALGO_SIA) {
+				range_done = ((nonceptr[1] & 0xFF00) >= 0xF000);
+			}
+
 			if (opt_algo == ALGO_DECRED || opt_algo == ALGO_WILDKECCAK /* getjob */)
 				work_done = true; // force "regen" hash
-			while (!work_done && time(NULL) >= (g_work_time + opt_scantime)) {
-				usleep(100*1000);
-				if (sleeptime > 4) {
-					extrajob = true;
-					break;
+			// An exhausted range regenerates below regardless, so waiting only idles.
+			// ONE 100 ms tick, not six. This is a poll for a fresher job and the GPU
+			// is idle for every tick of it, while the regen it ends with -- rolling
+			// xnonce2 on the job already in hand -- is work that could start at once.
+			// The window rarely lands a fresher job and idles the card the rest of
+			// the time.
+			// The tick is not removed: stratum_gen_work() fails while job_id is null
+			// and leaves g_work_time alone, so this condition stays true and a
+			// sleepless loop would spin on a pool that has not sent a job yet.
+			// Equihash with a job in hand skips the tick, which would only idle the
+			// card: the regen below keeps the job, and its nonce space is not used up.
+			if (!work_done && !range_done && time(NULL) >= (g_work_time + opt_scantime)) {
+				if (opt_algo != ALGO_EQUIHASH || !stratum.job.job_id) {
+					usleep(100*1000);
+					sleeptime = 1;
 				}
-				sleeptime++;
+				extrajob = true;
 			}
 			if (sleeptime && opt_debug && !opt_quiet)
 				applog(LOG_DEBUG, "sleeptime: %u ms", sleeptime*100);
@@ -2096,10 +2549,7 @@ static void *miner_thread(void *userdata)
 			pthread_mutex_lock(&g_work_lock);
 			extrajob |= work_done;
 
-			regen = (nonceptr[0] >= end_nonce);
-			if (opt_algo == ALGO_SIA) {
-				regen = ((nonceptr[1] & 0xFF00) >= 0xF000);
-			}
+			regen = range_done;
 			regen = regen || extrajob;
 
 			if (regen) {
@@ -2176,7 +2626,11 @@ static void *miner_thread(void *userdata)
 			}
 		}
 
-		else if (memcmp(&work.data[wcmpoft], &g_work.data[wcmpoft], wcmplen)) {
+		else if (memcmp(&work.data[wcmpoft], &g_work.data[wcmpoft], wcmplen) ||
+		         /* Verus pools can push a new solution template with an unchanged
+		          * header; the template is hashed, so it is new work */
+		         (opt_algo == ALGO_VERUS &&
+		          memcmp(work.extra, g_work.extra, 3 + VERUS_SOL_FIXED_LEN))) {
 			#if 0
 			if (opt_debug) {
 				for (int n=0; n <= (wcmplen-8); n+=8) {
@@ -2190,6 +2644,19 @@ static void *miner_thread(void *userdata)
 			#endif
 			memcpy(&work, &g_work, sizeof(struct work));
 			nonceptr[0] = (UINT32_MAX / opt_n_threads) * thr_id; // 0 if single thr
+		} else if (opt_algo == ALGO_VERUS && strcmp(work.job_id, g_work.job_id)) {
+			/* pools can re-issue an identical job under a new id and drop the
+			 * old one: adopt the id, keep the nonce position and data[32] roll */
+			const uint32_t pos = nonceptr[0], roll = nonceptr[2];
+			memcpy(&work, &g_work, sizeof(struct work));
+			nonceptr[0] = pos;
+			nonceptr[2] = roll;
+		} else if (opt_algo == ALGO_PEARLHASH && (strcmp(work.job_id, g_work.job_id) ||
+		           strcmp(work.pearl_target, g_work.pearl_target))) {
+			/* retarget: same header, new job id and target; keep the trial position */
+			const uint32_t pos = nonceptr[0];
+			memcpy(&work, &g_work, sizeof(struct work));
+			nonceptr[0] = pos;
 		} else
 			nonceptr[0]++; //??
 
@@ -2203,14 +2670,20 @@ static void *miner_thread(void *userdata)
 			// use the full range per loop
 			nonceptr[0] = 0;
 			end_nonce = UINT32_MAX;
-			// and make an unique work (extradata)
-			nonceptr[1] += 1;
-			nonceptr[2] |= thr_id;
+			// Roll OUR extranonce2 (data[37], offset 148) so each work unit differs;
+			// it is the field the submit echoes. data[36] (offset 144) is the pool's
+			// extranonce1 and must go back unchanged.
+			nonceptr[2] += 1;
+			nonceptr[2] = (nonceptr[2] & 0x00FFFFFFu) | ((uint32_t)thr_id << 24);
 
 		} else if (opt_algo == ALGO_EQUIHASH) {
 			nonceptr[1]++;
 			nonceptr[1] |= thr_id << 24;
 			//applog_hex(&work.data[27], 32);
+		} else if (opt_algo == ALGO_VERUS) {
+			// Verus hashes data[32], not data[31]: roll it with the thread in
+			// the top byte so GPUs never share a nonce space
+			nonceptr[2] = ((nonceptr[2] + 1) & 0x00ffffffu) | ((uint32_t) thr_id << 24);
 		} else if (opt_algo == ALGO_WILDKECCAK) {
 			//nonceptr[1] += 1;
 		} else if (opt_algo == ALGO_SIA) {
@@ -2247,9 +2720,25 @@ static void *miner_thread(void *userdata)
 		}
 		loopcnt++;
 
+		/* Park before the wait-for-work paths below: the park site in the
+		 * !wanna_mine() branch is unreachable from their `continue`s, so a thread
+		 * waiting for a job never acknowledged a park and every control mutation
+		 * timed out against it. */
+		if (api_ctl_wants_pause()) {
+			algo_free_all(thr_id);
+			cuda_clear_lasterror();
+			global_hashrate = 0;
+			api_ctl_park(thr_id);
+			continue;
+		}
+
 		// prevent gpu scans before a job is received
 		if (opt_algo == ALGO_SIA) nodata_check_oft = 7; // no stratum version
 		else if (opt_algo == ALGO_DECRED) nodata_check_oft = 4; // testnet ver is 0
+		else if (opt_algo == ALGO_SHA256D || opt_algo == ALGO_SHA256T || opt_algo == ALGO_SHA256CSM || opt_algo == ALGO_SHA512256D)
+			nodata_check_oft = 17; // ntime; zpool sha256 jobs carry block version 0
+		else if (is_progpow_algo(opt_algo))
+			nodata_check_oft = 18; // nbits; ProgPoW jobs carry no header/version word
 		else nodata_check_oft = 0;
 		if (have_stratum && work.data[nodata_check_oft] == 0 && !opt_benchmark) {
 			sleep(1);
@@ -2276,6 +2765,16 @@ static void *miner_thread(void *userdata)
 			algo_free_all(thr_id);
 			// clear any free error (algo switch)
 			cuda_clear_lasterror();
+
+			/* Resources are released, so park here; returns as soon as the
+			 * pause lifts, which is why a resume skips the 5 s below. The
+			 * hashrate is zeroed for the same reason the pool_on_hold branch
+			 * below zeroes it. */
+			if (api_ctl_wants_pause()) {
+				global_hashrate = 0;
+				api_ctl_park(thr_id);
+				continue;
+			}
 
 			// conditional pool switch
 			if (num_pools > 1 && conditional_pool_rotate) {
@@ -2307,6 +2806,14 @@ static void *miner_thread(void *userdata)
 
 		pool_on_hold = false;
 
+		/* pool_switch() changed opt_algo on another thread and cannot free this thread's device
+		 * memory. Do it here, before the new algo allocates. */
+		if (algo_gen_seen != algo_switch_gen) {
+			algo_gen_seen = algo_switch_gen;
+			algo_free_all(thr_id);
+			cuda_clear_lasterror();
+		}
+
 		work_restart[thr_id].restart = 0;
 
 		/* adjust max_nonce to meet target scan time */
@@ -2318,12 +2825,22 @@ static void *miner_thread(void *userdata)
 		/* time limit */
 		if (opt_time_limit > 0 && firstwork_time) {
 			int passed = (int)(time(NULL) - firstwork_time);
+			/* Rotation restarts `firstwork_time`, so the per-pool period below uses it
+			* while the EXIT decision must not: measure the deadline from the session. */
+			const int session_passed = (int)(time(NULL) - session_start_time);
 			int remain = (int)(opt_time_limit - passed);
+						/* Only for an inherited limit: a pool with its own period wants rotation. */
+			if (!pools[cur_pooln].time_limit_set && session_passed >= opt_time_limit)
+				remain = -1;
 			if (remain < 0)  {
 				if (thr_id != 0) {
 					sleep(1); continue;
 				}
-				if (num_pools > 1 && pools[cur_pooln].time_limit > 0) {
+								/* Rotate only if this pool asked for its own mining period. A limit inherited
+				 * from --time-limit means stop, and taking the rotate branch for it left the
+				 * exit below unreachable. */
+				if (num_pools > 1 && pools[cur_pooln].time_limit > 0 &&
+				    pools[cur_pooln].time_limit_set) {
 					if (!pool_is_switching) {
 						if (!opt_quiet)
 							applog(LOG_INFO, "Pool mining timeout of %ds reached, rotate...", opt_time_limit);
@@ -2362,7 +2879,9 @@ static void *miner_thread(void *userdata)
 				if (thr_id != 0) {
 					sleep(1); continue;
 				}
-				if (num_pools > 1 && pools[cur_pooln].shares_limit > 0) {
+								/* Same rule as the time limit above. */
+				if (num_pools > 1 && pools[cur_pooln].shares_limit > 0 &&
+				    pools[cur_pooln].shares_limit_set) {
 					if (!pool_is_switching) {
 						if (!opt_quiet)
 							applog(LOG_INFO, "Pool shares limit of %d reached, rotate...", opt_shares_limit);
@@ -2402,6 +2921,9 @@ static void *miner_thread(void *userdata)
 			case ALGO_SHA256CSM:
 			case ALGO_SHA256D:
 			case ALGO_SHA256T:
+			case ALGO_SHA256DV:
+			case ALGO_SHA512256D:
+			//case ALGO_WHIRLPOOLX:
 			case ALGO_WHIRLPOOLX2:
 				minmax = 0x40000000U;
 				break;
@@ -2449,6 +2971,7 @@ static void *miner_thread(void *userdata)
 			case ALGO_ARGON2D1000:
 			case ALGO_ARGON2D4096:
 			case ALGO_ARGON2D16000:
+			case ALGO_ARGON2ID1024:
 			case ALGO_NEOSCRYPT:
 			case ALGO_XAYA:
 			case ALGO_SIB:
@@ -2462,12 +2985,18 @@ static void *miner_thread(void *userdata)
 			case ALGO_YESCRYPTR16V2:
 			case ALGO_YESCRYPTR24:
 			case ALGO_YESCRYPTR32:
-			case ALGO_LYRA2Z330:
+				case ALGO_YESPOWER:
+				case ALGO_YESPOWERR16:
+				case ALGO_POWER2B:
+				case ALGO_YESPOWEREQPAY:
+				case ALGO_MINOTAURX:
 				minmax = 0x8000;
 				break;
 			case ALGO_CRYPTOLIGHT:
 			case ALGO_CRYPTONIGHT:
 			case ALGO_SCRYPT_JANE:
+			case ALGO_HOMESCRYPT:  // 16 MB scratchpad per hash
+			case ALGO_LYRA2Z330:  // ~7.7 MB matrix per hash, so VRAM caps it at a few kH/s
 				minmax = 0x1000;
 				break;
 			}
@@ -2557,9 +3086,6 @@ static void *miner_thread(void *userdata)
 		case ALGO_DEEP:
 			rc = scanhash_deep(thr_id, &work, max_nonce, &hashes_done);
 			break;
-		case ALGO_EVOHASH:
-			rc = scanhash_evohash(thr_id, &work, max_nonce, &hashes_done);
-			break;
 		case ALGO_FRESH:
 			rc = scanhash_fresh(thr_id, &work, max_nonce, &hashes_done);
 			break;
@@ -2579,7 +3105,7 @@ static void *miner_thread(void *userdata)
 			break;
 
 		case ALGO_HMQ1725:
-			rc = scanhash_hmq17(thr_id, &work, max_nonce, &hashes_done);
+			rc = scanhash_hmq1725(thr_id, &work, max_nonce, &hashes_done);
 			break;
 		case ALGO_HSR:
 			rc = scanhash_hsr(thr_id, &work, max_nonce, &hashes_done);
@@ -2616,9 +3142,6 @@ static void *miner_thread(void *userdata)
 		case ALGO_QUBIT:
 			rc = scanhash_qubit(thr_id, &work, max_nonce, &hashes_done);
 			break;
-		case ALGO_RINHASH:
-			rc = scanhash_rinhash(thr_id, &work, max_nonce, &hashes_done);
-			break;
 		case ALGO_LYRA2:
 			rc = scanhash_lyra2(thr_id, &work, max_nonce, &hashes_done);
 			break;
@@ -2627,6 +3150,9 @@ static void *miner_thread(void *userdata)
 			break;
 		case ALGO_LYRA2Z:
 			rc = scanhash_lyra2Z(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_LYRA2Z330:
+			rc = scanhash_lyra2z330(thr_id, &work, max_nonce, &hashes_done);
 			break;
 		case ALGO_ALLIUM:
 			rc = scanhash_allium(thr_id, &work, max_nonce, &hashes_done);
@@ -2642,6 +3168,21 @@ static void *miner_thread(void *userdata)
 			break;
 		case ALGO_ARGON2D16000:
 			rc = scanhash_argon2d16000(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_ARGON2ID1024:
+			rc = scanhash_argon2id1024(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_BALLOON:
+			rc = scanhash_balloon(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_RINHASH:
+			rc = scanhash_rinhash(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_EVOHASH:
+			rc = scanhash_evohash(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_ODO:
+			rc = scanhash_odocrypt(thr_id, &work, max_nonce, &hashes_done);
 			break;
 		case ALGO_ANIME:
 			rc = scanhash_anime(thr_id, &work, max_nonce, &hashes_done);
@@ -2676,9 +3217,6 @@ static void *miner_thread(void *userdata)
 		case ALGO_SKUNK:
 			rc = scanhash_skunk(thr_id, &work, max_nonce, &hashes_done);
 			break;
-		case ALGO_SKYDOGE:
-			rc = scanhash_skydoge(thr_id, &work, max_nonce, &hashes_done);
-			break;
 		case ALGO_SHA256CSM:
 			rc = scanhash_sha256csm(thr_id, &work, max_nonce, &hashes_done);
 			break;
@@ -2688,11 +3226,43 @@ static void *miner_thread(void *userdata)
 		case ALGO_SHA256T:
 			rc = scanhash_sha256t(thr_id, &work, max_nonce, &hashes_done);
 			break;
+		case ALGO_SHA256DV:
+			rc = scanhash_sha256dv(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_KAWPOW:
+			rc = scanhash_kawpow(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_MEOWPOW:
+			rc = scanhash_meowpow(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_EVRPROGPOW:
+			rc = scanhash_evrprogpow(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_FIROPOW:
+			rc = scanhash_firopow(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_MERAKI:
+			rc = scanhash_meraki(thr_id, &work, max_nonce, &hashes_done);
+			break;
 		case ALGO_SHA3D:
 			rc = scanhash_sha3d(thr_id, &work, max_nonce, &hashes_done);
 			break;
-		case ALGO_SHA3T:
-			rc = scanhash_sha3t(thr_id, &work, max_nonce, &hashes_done);
+		case ALGO_SHA512256D:
+			rc = scanhash_sha512256d(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_YESPOWER:
+		case ALGO_YESPOWERR16:
+		case ALGO_POWER2B:
+		case ALGO_YESPOWEREQPAY:
+			rc = scanhash_yespower(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_SCRYPT:
+			rc = scanhash_scrypt(thr_id, &work, max_nonce, &hashes_done,
+				NULL, &tv_start, &tv_end);
+			break;
+		case ALGO_SCRYPT_JANE:
+			rc = scanhash_scrypt_jane(thr_id, &work, max_nonce, &hashes_done,
+				NULL, &tv_start, &tv_end);
 			break;
 		case ALGO_SIA:
 			rc = scanhash_sia(thr_id, &work, max_nonce, &hashes_done);
@@ -2712,6 +3282,9 @@ static void *miner_thread(void *userdata)
 		case ALGO_WHIRLCOIN:
 		case ALGO_WHIRLPOOL:
 			rc = scanhash_whirl(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_WHIRLPOOLX:
+			rc = scanhash_whirlx(thr_id, &work, max_nonce, &hashes_done);
 			break;
 		case ALGO_WHIRLPOOLX2:
 			rc = scanhash_whirlpoolx2(thr_id, &work, max_nonce, &hashes_done);
@@ -2736,12 +3309,6 @@ static void *miner_thread(void *userdata)
 			break;
 		case ALGO_X11:
 			rc = scanhash_x11(thr_id, &work, max_nonce, &hashes_done);
-			break;
-		case ALGO_HOOHASH:
-			rc = scanhash_hoohash(thr_id, &work, max_nonce, &hashes_done);
-			break;
-		case ALGO_SOTERG:
-			rc = scanhash_soterg(thr_id, &work, max_nonce, &hashes_done);
 			break;
 		case ALGO_X13:
 			rc = scanhash_x13(thr_id, &work, max_nonce, &hashes_done);
@@ -2770,6 +3337,54 @@ static void *miner_thread(void *userdata)
 		case ALGO_X21S:
 			rc = scanhash_x21s(thr_id, &work, max_nonce, &hashes_done);
 			break;
+		case ALGO_SKYDOGE:
+			rc = scanhash_skydoge(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_HOOHASH:
+			rc = scanhash_hoohash(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_GHOSTRIDER:
+			rc = scanhash_ghostrider(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_MIKE:
+			rc = scanhash_mike(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_FLEX:
+			rc = scanhash_flex(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_MINOTAURX:
+			rc = scanhash_minotaurx(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_HOMESCRYPT:
+			rc = scanhash_homescrypt(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_SHA3T:
+			rc = scanhash_sha3t(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_SOTERG:
+			rc = scanhash_soterg(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_X25X:
+			rc = scanhash_x25x(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_CURVEHASH:
+			rc = scanhash_curvehash(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_BC3HASH:
+			rc = scanhash_bc3hash(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_PEARLHASH:
+			rc = scanhash_pearlhash(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_VERTHASH:
+			rc = scanhash_verthash(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_EQUIHASH:
+			rc = scanhash_equihash(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_VERUS:
+			rc = scanhash_verus(thr_id, &work, max_nonce, &hashes_done);
+			break;
 		case ALGO_ZR5:
 			rc = scanhash_zr5(thr_id, &work, max_nonce, &hashes_done);
 			break;
@@ -2796,17 +3411,15 @@ static void *miner_thread(void *userdata)
 		case ALGO_YESCRYPTR32:
 			rc = scanhash_yescryptr32(thr_id, &work, max_nonce, &hashes_done);
 			break;
-		
-		case ALGO_GHOSTRIDER:
-			rc = scanhash_ghostrider(thr_id, &work, max_nonce, &hashes_done);
-			break;
-		
-		case ALGO_EQUIHASH:
-			rc = scanhash_equihash(thr_id, &work, max_nonce, &hashes_done);
-			break;
-			
+
+
 		default:
-			/* should never happen */
+			/* An algo whose scanhash case is compiled out lands here (heavy and
+			 * mjollnir need WITH_HEAVY_ALGO). Must not exit quietly: that leaves
+			 * the process alive and idle, looking like it is mining. */
+			applog(LOG_ERR, "algo '%s' is not available in this build",
+				algo_names[opt_algo]);
+			proper_exit(EXIT_CODE_USAGE);
 			goto out;
 		}
 
@@ -2824,9 +3437,9 @@ static void *miner_thread(void *userdata)
 
 		switch (opt_algo) {
 			// algos to migrate to replace pdata[21] by work.nonces[]
-			case ALGO_HEAVY:
 			case ALGO_SCRYPT:
 			case ALGO_SCRYPT_JANE:
+			//case ALGO_WHIRLPOOLX:
 				work.nonces[0] = nonceptr[0];
 				work.nonces[1] = nonceptr[2];
 		}
@@ -2861,6 +3474,10 @@ static void *miner_thread(void *userdata)
 					// to stay comparable to other ccminer forks or pools
 					rate_factor = 0.5;
 					break;
+				case ALGO_PEARLHASH:
+					// hashes_done is in units of 2^20 int8 MAC; show MAC/s
+					rate_factor = 1048576.0;
+					break;
 			}
 
 			/* store thread hashrate */
@@ -2890,7 +3507,8 @@ static void *miner_thread(void *userdata)
 		}
 
 		// only required to debug purpose
-		if (opt_debug && check_dups && opt_algo != ALGO_DECRED && opt_algo != ALGO_EQUIHASH && opt_algo != ALGO_SIA)
+		if (opt_debug && check_dups && opt_algo != ALGO_DECRED && opt_algo != ALGO_EQUIHASH &&
+		    opt_algo != ALGO_VERUS && opt_algo != ALGO_SIA)
 			hashlog_remember_scan_range(&work);
 
 		/* output */
@@ -2907,9 +3525,13 @@ static void *miner_thread(void *userdata)
 			for (int i = 0; i < opt_n_threads && thr_hashrates[i]; i++)
 				hashrate += stats_get_speed(i, thr_hashrates[i]);
 			pthread_mutex_unlock(&stats_lock);
-			if (opt_benchmark && bench_algo == -1 && loopcnt > 2) {
+			// throttled like the per-GPU rate line: fast algos return from
+			// scanhash many times per second (shares, max_nonce windows)
+			if (opt_benchmark && bench_algo == -1 && loopcnt > 2 &&
+					(time(NULL) - tm_total_log) > opt_maxlograte) {
 				format_hashrate(hashrate, s);
 				applog(LOG_NOTICE, "Total: %s", s);
+				tm_total_log = time(NULL);
 			}
 
 			// since pool start
@@ -2921,6 +3543,8 @@ static void *miner_thread(void *userdata)
 
 		if (firstwork_time == 0)
 			firstwork_time = time(NULL);
+		if (session_start_time == 0)
+			session_start_time = time(NULL);
 
 		if (cgpu) cgpu->accepted += work.valid_nonces;
 
@@ -2947,18 +3571,31 @@ static void *miner_thread(void *userdata)
 				continue;
 			}
 
-			// second nonce found, submit too (on pool only!)
-			if (rc > 1 && work.nonces[1]) {
-				work.submit_nonce_id = 1;
-				nonceptr[0] = work.nonces[1];
+			// further nonces found, submit them too (on pool only!)
+			// The scan cursor moves past this window, so a candidate not
+			// submitted here is lost for good.
+			if (rc > 1) {
+				bool submit_failed = false;
 				if (opt_algo == ALGO_ZR5) {
-					work.data[0] = work.data[22]; // pok
+					// pok swap, once for the whole tail: repeating it per nonce
+					// would read back the data[22] the first pass zeroed.
+					work.data[0] = work.data[22];
 					work.data[22] = 0;
 				}
-				if (!submit_work(mythr, &work))
+				for (int sn = 1; sn < rc && sn < MAX_NONCES; sn++) {
+					// 0 and UINT32_MAX are both "no nonce here" in the tree's
+					// conventions, and 0 is ALSO a legal nonce -- skipping it is
+					// the pre-existing behaviour, not a new loss.
+					if (!work.nonces[sn] || work.nonces[sn] == UINT32_MAX)
+						continue;
+					work.submit_nonce_id = (uint8_t)sn;
+					nonceptr[0] = work.nonces[sn];
+					if (!submit_work(mythr, &work)) { submit_failed = true; break; }
+					nonceptr[0] = curnonce;
+					work.nonces[sn] = 0; // reset
+				}
+				if (submit_failed)
 					break;
-				nonceptr[0] = curnonce;
-				work.nonces[1] = 0; // reset
 			}
 		}
 	}
@@ -3074,11 +3711,12 @@ longpoll_retry:
 				restart_threads();
 				if (!opt_quiet) {
 					char netinfo[64] = { 0 };
+					char nd[FORMAT_DIFF_LEN];
 					if (net_diff > 0.) {
-						sprintf(netinfo, ", diff %.8f", net_diff);
+						snprintf(netinfo, sizeof(netinfo), ", diff %s", format_diff(net_diff, nd, sizeof(nd)));
 					}
 					if (opt_showdiff) {
-						sprintf(&netinfo[strlen(netinfo)], ", target %.8f", g_work.targetdiff);
+						snprintf(&netinfo[strlen(netinfo)], sizeof(netinfo) - strlen(netinfo), ", target %s", format_diff(g_work.targetdiff, nd, sizeof(nd)));
 					}
 					if (g_work.height)
 						applog(LOG_BLUE, "%s block %u%s", algo_names[opt_algo], g_work.height, netinfo);
@@ -3129,7 +3767,7 @@ static bool stratum_handle_response(char *buf)
 	json_t *val, *err_val, *res_val, *id_val;
 	json_error_t err;
 	struct timeval tv_answer, diff;
-	int num = 0, job_nonce_id = 0;
+	int num = 0;
 	double sharediff = stratum.sharediff;
 	bool ret = false;
 
@@ -3151,10 +3789,10 @@ static bool stratum_handle_response(char *buf)
 	if (num < 4)
 		goto out;
 
-	// We dont have the work anymore, so use the hashlog to get the right sharediff for multiple nonces
-	job_nonce_id = num - 10;
-	if (opt_showdiff && check_dups)
-		sharediff = hashlog_get_sharediff(g_work.job_id, job_nonce_id, sharediff);
+	// The work is gone by now, so look the submit id up for this share's own
+	// difficulty. Must not be keyed on the job that is live now: a response can
+	// arrive after a job change.
+	submit_id_lookup((uint32_t)num, &sharediff);
 
 	gettimeofday(&tv_answer, NULL);
 	timeval_subtract(&diff, &tv_answer, &stratum.tv_submit);
@@ -3172,8 +3810,13 @@ static bool stratum_handle_response(char *buf)
 	} else {
 		if (!res_val)
 			goto out;
-		share_result(json_is_true(res_val), stratum.pooln, sharediff,
-			err_val ? json_string_value(json_array_get(err_val, 1)) : NULL);
+		/* errors are [code, "msg", ...] here, or {"code": n, "msg": "..."} (Pearl) */
+		const char *reason = NULL;
+		if (err_val && json_is_object(err_val))
+			reason = json_string_value(json_object_get(err_val, "msg"));
+		else if (err_val)
+			reason = json_string_value(json_array_get(err_val, 1));
+		share_result(json_is_true(res_val), stratum.pooln, sharediff, reason);
 	}
 
 	ret = true;
@@ -3219,6 +3862,14 @@ wait_stratum_url:
 		}
 
 		while (!stratum.curl && !abort_flag) {
+			/* A stopped miner must not reconnect. Checked before any connect
+			 * attempt and without touching `failures`: the escalation below
+			 * calls proper_exit(), which would turn a stop into a kill. */
+			if (api_ctl_hold_connection()) {
+				usleep(200 * 1000);
+				continue;
+			}
+
 			pthread_mutex_lock(&g_work_lock);
 			g_work_time = 0;
 			g_work.data[0] = 0;
@@ -3230,8 +3881,13 @@ wait_stratum_url:
 			    !stratum_authorize(&stratum, pool->user, pool->pass))
 			{
 				stratum_disconnect(&stratum);
-				if (opt_retries >= 0 && ++failures > opt_retries) {
-					if (num_pools > 1 && opt_pool_failover) {
+					/* A control-requested pool switch owns the choice of pool while
+				 * it is in flight: failing over here would move the rig to a
+				 * pool the manager did not ask for, and pool_switch() changes
+				 * algo with no barrier while the miner threads are live. */
+				if (opt_retries >= 0 && ++failures > opt_retries &&
+				    !api_ctl_switch_in_flight()) {
+					if (num_pools > 1 && opt_pool_failover && !abort_flag) {
 						applog(LOG_WARNING, "Stratum connect timeout, failover...");
 						pool_switch_next(-1);
 					} else {
@@ -3265,10 +3921,11 @@ wait_stratum_url:
 				static uint32_t last_block_height;
 				if ((!opt_quiet || !firstwork_time) && stratum.job.height != last_block_height) {
 					last_block_height = stratum.job.height;
-					if (net_diff > 0.)
-						applog(LOG_BLUE, "%s block %d, diff %.8f", algo_names[opt_algo],
-							stratum.job.height, net_diff);
-					else
+					if (net_diff > 0.) {
+						char nd[FORMAT_DIFF_LEN];
+						applog(LOG_BLUE, "%s block %d, diff %s", algo_names[opt_algo],
+							stratum.job.height, format_diff(net_diff, nd, sizeof(nd)));
+					} else
 						applog(LOG_BLUE, "%s %s block %d", pool->short_url, algo_names[opt_algo],
 							stratum.job.height);
 				}
@@ -3286,12 +3943,44 @@ wait_stratum_url:
 		// check we are on the right pool
 		if (switchn != pool_switch_count) goto pool_switched;
 
-		if (!stratum_socket_full(&stratum, opt_timeout)) {
-			if (opt_debug)
-				applog(LOG_WARNING, "Stratum connection timed out");
-			s = NULL;
-		} else
-			s = stratum_recv_line(&stratum);
+		/* A requested pool switch runs here, on the thread that owns the
+		 * stratum struct: pool_switch() replaces it wholesale while
+		 * stratum_recv_line() reads it under no lock. */
+		{
+			char ctl_url[1024];
+			int ctl_idx = -1, ctl_algo = -1;
+			if (api_ctl_pool_request_take(ctl_url, sizeof(ctl_url), &ctl_idx, &ctl_algo)) {
+				api_ctl_pool_request_done(ctl_idx >= 0
+					? pool_switch(-1, ctl_idx)
+					: pool_switch_url_algo(ctl_url, ctl_algo));
+				if (switchn != pool_switch_count) goto pool_switched;
+			}
+		}
+
+		/* One-second slices rather than one long select: same total timeout,
+		 * but the handover above stays reachable while the pool is quiet. */
+		{
+			bool ready = false;
+			int waited = 0;
+			while (!(ready = stratum_socket_full(&stratum, 1))) {
+				if (abort_flag || api_ctl_pool_request_pending() ||
+				    switchn != pool_switch_count)
+					break;
+				if (++waited >= opt_timeout)
+					break;
+			}
+			if (ready) {
+				s = stratum_recv_line(&stratum);
+			} else if (abort_flag) {
+				break;
+			} else if (api_ctl_pool_request_pending() || switchn != pool_switch_count) {
+				continue;             /* re-run the checks at the top */
+			} else {
+				if (opt_debug)
+					applog(LOG_WARNING, "Stratum connection timed out");
+				s = NULL;
+			}
+		}
 
 		// double check we are on the right pool
 		if (switchn != pool_switch_count) goto pool_switched;
@@ -3315,7 +4004,14 @@ out:
 
 pool_switched:
 	/* this thread should not die on pool switch */
-	stratum_disconnect(&(pools[pooln].stratum));
+	/* Disconnect the live session, not `pools[pooln].stratum`, which is never
+	 * connected.  Leaving it open skips the reconnect loop below, so the miner
+	 * keeps reading the previous pool's jobs under the new algo. */
+	stratum_disconnect(&stratum);
+	/* Do not reconnect while shutting down: the disconnect above would otherwise
+	 * drive a failover into the teardown. */
+	if (abort_flag)
+		goto out;
 	if (stratum.url) free(stratum.url); stratum.url = NULL;
 	if (opt_debug_threads)
 		applog(LOG_DEBUG, "%s() reinit...", __func__);
@@ -3375,12 +4071,22 @@ void parse_arg(int key, char *arg)
 			applog(LOG_ERR, "Unknown algo parameter '%s'", arg);
 			show_usage_and_exit(1);
 		}
-		
+
 		// equihash 144/5 shares ALGO_EQUIHASH but needs the (n,k) +
 		// personalization variant selected; the alias name carries that intent.
 		if (opt_algo == ALGO_EQUIHASH &&
 		    (!strcasecmp("equihash144", arg) || !strcasecmp("equihash144_5", arg)))
 			eq_set_variant_144();
+		if (opt_algo == ALGO_EQUIHASH &&
+		    (!strcasecmp("equihash192", arg) || !strcasecmp("equihash192_7", arg)))
+			eq_set_variant_192();
+
+		// Same shape as equihash above: the yespower coin variants share one algo
+		// and differ only in (N, r, pers), which the alias name selects. A later
+		// --yespower-param/-key clears the selection and wins.
+		if ((opt_algo == ALGO_YESPOWER || opt_algo == ALGO_YESPOWERR16) &&
+		    !yespower_set_variant(arg))
+			show_usage_and_exit(1);
 
 		if (p) {
 			opt_nfactor = atoi(p + 1);
@@ -3419,7 +4125,9 @@ void parse_arg(int key, char *arg)
 		break;
 	case 1030: /* --api-remote */
 		if (opt_api_allow) free(opt_api_allow);
-		opt_api_allow = strdup("0/0");
+		/* W: is required: without a group prefix setup_ipaccess() files this as
+		 * group R, which grants read only -- not the control this option enables. */
+		opt_api_allow = strdup("W:0/0");
 		break;
 	case 1031: /* --api-allow */
 		// --api-allow 0/0 means opened to all, so assume -b 0.0.0.0
@@ -3438,19 +4146,57 @@ void parse_arg(int key, char *arg)
 	case 1034: /* --api-mcast-addr */
 		free(opt_api_mcast_addr);
 		opt_api_mcast_addr = strdup(arg);
+		break;
 	case 1035: /* --api-mcast-code */
 		free(opt_api_mcast_code);
 		opt_api_mcast_code = strdup(arg);
 		break;
-	case 1036: /* --api-mcast-des */
-		free(opt_api_mcast_des);
-		opt_api_mcast_des = strdup(arg);
-		break;
-	case 1037: /* --api-mcast-port */
+	case 1036: /* --api-mcast-port */
 		v = atoi(arg);
 		if (v < 1 || v > 65535) // sanity check
 			show_usage_and_exit(1);
 		opt_api_mcast_port = v;
+		break;
+	case 1037: /* --api-mcast-des */
+		free(opt_api_mcast_des);
+		opt_api_mcast_des = strdup(arg);
+		break;
+	case 1211: /* --api-mode */
+		if (!strcasecmp(arg, "binary"))    opt_api_mode = API_MODE_BINARY;
+		else if (!strcasecmp(arg, "http")) opt_api_mode = API_MODE_HTTP;
+		else if (!strcasecmp(arg, "both")) opt_api_mode = API_MODE_BOTH;
+		else {
+			fprintf(stderr, "unknown api mode -- '%s' (binary|http|both)\n", arg);
+			show_usage_and_exit(1);
+		}
+		break;
+	case 1212: /* --api-token */
+		free(opt_api_token);
+		opt_api_token = strdup(arg);
+		break;
+	case 1213: /* --api-cors */
+		free(opt_api_cors);
+		opt_api_cors = strdup(arg);
+		break;
+	case 1214: /* --api-http-port */
+		v = atoi(arg);
+		if (v < 0 || v > 65535)
+			show_usage_and_exit(1);
+		opt_api_http_port = v;
+		break;
+	case 1215: /* --api-control */
+		opt_api_control = true;
+		break;
+	case 1216: /* --api-control-min-interval */
+		v = atoi(arg);
+		if (v < 0) show_usage_and_exit(1);
+		opt_api_control_min_interval = v;
+		break;
+	case 1217: /* --api-control-park-timeout */
+		v = atoi(arg);
+		if (v < 100) show_usage_and_exit(1);
+		opt_api_control_park_timeout = v;
+		break;
 	case 'B':
 		opt_background = true;
 		break;
@@ -3594,17 +4340,16 @@ void parse_arg(int key, char *arg)
 			if (opt_timeout == 300) opt_timeout = 60;
 		}
 		p = strstr(arg, "://");
-		if (p) 
-		{
+		if (p) {
 			if (strncasecmp(arg, "http://", 7) &&
 				strncasecmp(arg, "https://", 8) &&
 				strncasecmp(arg, "stratum+tcp://", 14) &&
 				strncasecmp(arg, "stratum+ssl://", 14) &&
-				strncasecmp(arg, "stratum+tcps://", 15)) 
-				{
-					fprintf(stderr, "unknown protocol -- '%s'\n", arg);
-					show_usage_and_exit(1);
-				}
+				strncasecmp(arg, "stratum+tcps://", 15))
+			{
+				fprintf(stderr, "unknown protocol -- '%s'\n", arg);
+				show_usage_and_exit(1);
+			}
 			free(rpc_url);
 			rpc_url = strdup(arg);
 			short_url = &rpc_url[(p - arg) + 3];
@@ -3672,6 +4417,13 @@ void parse_arg(int key, char *arg)
 		free(opt_cert);
 		opt_cert = strdup(arg);
 		break;
+	case 1099: /* --verthash-data */
+		free(opt_verthash_data);
+		opt_verthash_data = strdup(arg);
+		break;
+	case 1210: /* --generate-verthash-dat */
+		opt_gen_verthash_data = true;
+		break;
 	case 1002:
 		use_colors = false;
 		break;
@@ -3725,6 +4477,30 @@ void parse_arg(int key, char *arg)
 			while (n < MAX_GPUS)
 				device_texturecache[n++] = last;
 		}
+		break;
+	case 1084: /* --yescrypt-param N[,r[,p]] */
+		{
+			/* Only -a yescrypt reads these; r8/r16/r24/r32 carry their own
+			 * constants. 0 leaves the algo default. */
+			char *pch = strtok(arg, ",");
+			uint32_t vals[3] = { 0, 0, 0 };
+			int n = 0;
+			while (pch != NULL && n < 3) {
+				vals[n++] = (uint32_t) atoi(pch);
+				pch = strtok(NULL, ",");
+			}
+			if (!n) show_usage_and_exit(1);
+			yescrypt_param_N = vals[0];
+			if (n > 1) yescrypt_param_r = vals[1];
+			if (n > 2) yescrypt_param_p = vals[2];
+			yespower_clear_variant(); /* explicit params beat a -a coin preset */
+		}
+		break;
+	case 1085: /* --yescrypt-key */
+		yespower_clear_variant(); /* as above */
+		free(yescrypt_key);
+		yescrypt_key = strdup(arg);
+		yescrypt_key_len = strlen(arg);
 		break;
 	case 1055: /* cryptonight --bfactor */
 		{
@@ -3861,7 +4637,7 @@ void parse_arg(int key, char *arg)
 	case 1015:
 		opt_submit_stale = true;
 		break;
-	case 1087: /* --user-agent */
+	case 1086: /* --user-agent */
 		if (arg && strlen(arg)) {
 			free(opt_user_agent);
 			opt_user_agent = strdup(arg);
@@ -4006,17 +4782,6 @@ void parse_arg(int key, char *arg)
 		break;
 	case 1199:
 		pool_set_attr(cur_pooln, "disabled", arg);
-		break;
-	case 1200: // Ã°Å¸Å¡â‚¬ THÃƒÅ M CASE NÃƒâ‚¬Y
-    opt_batch_size = (uint32_t)atoi(arg);
-    if (opt_batch_size < 32768 && opt_batch_size != 0) {
-         applog(LOG_WARNING, "Batch size quÃƒÂ¡ nhÃ¡Â»Â, Ã„â€˜Ã¡ÂºÂ·t vÃ¡Â»Â mÃ¡ÂºÂ·c Ã„â€˜Ã¡Â»â€¹nh.");
-         opt_batch_size = 0;
-    }
-		break;
-	
-	case 1086: /* --mweb */
-    opt_led_mode = true;
 		break;
 
 	case 'V':
@@ -4190,7 +4955,8 @@ int main(int argc, char *argv[])
 	// get opt_quiet early
 	parse_single_opt('q', argc, argv);
 
-	printf("*** ccminer-kudaraidee " PACKAGE_VERSION " for nVidia GPUs by kudaraidee@github ***\n");
+	printf("*** ccminer-kudaraidee " PACKAGE_VERSION " for nVidia GPUs by Kudaraidee ***\n");
+	printf("    based on tpfuemp/ccminer-tpfuemp 2026.11.1 (tpruvot 2.3.1 base)\n");
 	if (!opt_quiet) {
 		const char* arch = is_x64() ? "64-bits" : "32-bits";
 #ifdef _MSC_VER
@@ -4201,7 +4967,7 @@ int main(int argc, char *argv[])
 			CUDART_VERSION/1000, (CUDART_VERSION % 1000)/10, arch);
 		printf("  Originally based on Christian Buchner and Christian H. project\n");
 		printf("  Include some kernels from lenis0012, tpruvot, alexis78, djm34, djEzo, tsiv and krnlx.\n\n");
-		printf("DOGE donation address: D5fSxMfZ5tKYSxxQiJPeRoMjYcyHnffBwD (kudaraidee)\n\n");
+		printf("DOGE donation address: DNQdyeLu9DtRfsZCFvy1GfJTwjWJoSWHLh (tpfuemp)\n\n");
 	}
 
 	rpc_user = strdup("");
@@ -4214,6 +4980,7 @@ int main(int argc, char *argv[])
 	pthread_mutex_init(&stratum_work_lock, NULL);
 	pthread_mutex_init(&stats_lock, NULL);
 	pthread_mutex_init(&g_work_lock, NULL);
+	pthread_mutex_init(&submit_id_lock, NULL);
 
 	// number of cpus for thread affinity
 #if defined(WIN32)
@@ -4240,7 +5007,7 @@ int main(int argc, char *argv[])
 		device_name[i] = NULL;
 		device_config[i] = NULL;
 		device_backoff[i] = is_windows() ? 12 : 2;
-		device_bfactor[i] = is_windows() ? 11 : 0;
+		device_bfactor[i] = is_windows() ? 6 : 0;
 		device_lookup_gap[i] = 1;
 		device_batchsize[i] = 1024;
 		device_interactive[i] = -1;
@@ -4265,6 +5032,27 @@ int main(int argc, char *argv[])
 			parse_arg('c', defconfig);
 			parse_cmdline(argc, argv);
 		}
+	}
+
+	// One-shot utility: (re)create the Verthash data file, verify it, then exit.
+	// Needs no pool/URL. Takes several minutes and writes ~1.19 GiB to disk.
+	if (opt_gen_verthash_data) {
+		const char *vpath = opt_verthash_data ? opt_verthash_data : "verthash.dat";
+		applog(LOG_NOTICE, "Generating Verthash data file '%s' (this takes several minutes)...", vpath);
+		if (verthash_generate_data_file(vpath) != 0) {
+			applog(LOG_ERR, "Verthash data file generation failed");
+			proper_exit(EXIT_CODE_SW_INIT_ERROR);
+		}
+		uint8_t *vbuf = NULL; size_t vsz = 0;
+		if (verthash_data_load(vpath, &vbuf, &vsz) == 0) {
+			applog(LOG_NOTICE, "Verthash data file created: '%s' (%zu bytes)", vpath, vsz);
+			if (verthash_data_verify(vbuf, vsz))
+				applog(LOG_NOTICE, "Verthash data file verified against the canonical digest");
+			else
+				applog(LOG_WARNING, "Verthash data file digest does NOT match the canonical file");
+			free(vbuf);
+		}
+		proper_exit(EXIT_CODE_OK);
 	}
 
 	if (!strlen(rpc_url)) {
@@ -4292,7 +5080,7 @@ int main(int argc, char *argv[])
 		allow_mininginfo = false;
 	}
 
-	if (opt_algo == ALGO_EQUIHASH) {
+	if (opt_algo == ALGO_EQUIHASH || opt_algo == ALGO_VERUS) {
 		opt_extranonce = false; // disable subscribe
 	}
 
@@ -4310,8 +5098,8 @@ int main(int argc, char *argv[])
 	flags = CURL_GLOBAL_ALL;
 	if ( !opt_benchmark )
 		if ( strncasecmp( rpc_url, "https:", 6 )
-       && strncasecmp( rpc_url, "stratum+ssl://", 14 )
-       && strncasecmp( rpc_url, "stratum+tcps://", 15 ) )
+			&& strncasecmp(rpc_url, "stratum+ssl://", 14 )
+			&& strncasecmp( rpc_url, "stratum+tcps://", 15 ) )
 			flags &= ~CURL_GLOBAL_SSL;
 
 	if (curl_global_init(flags)) {
@@ -4509,6 +5297,10 @@ int main(int argc, char *argv[])
 	}
 #endif
 
+	/* Control core. Initialised before the API thread so a request arriving
+	 * on the first accept already sees a consistent state block. */
+	api_ctl_init(opt_api_control, opt_api_control_min_interval, opt_api_control_park_timeout);
+
 	if (opt_api_port) {
 		/* api thread */
 		api_thr_id = opt_n_threads + 3;
@@ -4566,6 +5358,7 @@ int main(int argc, char *argv[])
 		"using '%s' algorithm.",
 		opt_n_threads, opt_n_threads > 1 ? "s":"",
 		algo_names[opt_algo]);
+	cuda_log_kernel_timeout();
 
 	/* main loop - simply wait for workio thread to exit */
 	pthread_join(thr_info[work_thr_id].pth, NULL);

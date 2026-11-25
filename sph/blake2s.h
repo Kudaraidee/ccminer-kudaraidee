@@ -111,8 +111,9 @@ typedef struct __blake2s_param
 	uint8_t  salt[BLAKE2S_SALTBYTES]; // 24
 	uint8_t  personal[BLAKE2S_PERSONALBYTES];  // 32
 } blake2s_param;
+#pragma pack(pop)
 
-typedef struct __blake2s_state
+ALIGN( 64 ) typedef struct __blake2s_state
 {
 	uint32_t h[8];
 	uint32_t t[2];

@@ -1,7 +1,7 @@
-AC_INIT([ccminer-kudaraidee], [1.3.0], [], [ccminer-kudaraidee], [https://github.com/kudaraidee/ccminer-kudaraidee])
+AC_INIT([ccminer-kudaraidee], [1.4.0], [], [ccminer-kudaraidee], [https://github.com/Kudaraidee/ccminer-kudaraidee])
 
-AC_PREREQ([2.69])
-AC_CANONICAL_HOST
+AC_PREREQ([2.59c])
+AC_CANONICAL_SYSTEM
 AC_CONFIG_SRCDIR([ccminer.cpp])
 AM_INIT_AUTOMAKE([foreign subdir-objects])
 AC_CONFIG_HEADERS([ccminer-config.h])
@@ -10,7 +10,7 @@ dnl Make sure anyone changing configure.ac/Makefile.am has a clue
 AM_MAINTAINER_MODE
 
 dnl Checks for programs
-AC_PROG_CC
+AC_PROG_CC_C99
 AC_PROG_GCC_TRADITIONAL
 AM_PROG_CC_C_O
 AM_PROG_AS
@@ -19,6 +19,7 @@ AC_PROG_CXX
 AC_OPENMP
 
 dnl Checks for header files
+AC_HEADER_STDC
 AC_CHECK_HEADERS([sys/endian.h sys/param.h syslog.h])
 # sys/sysctl.h requires sys/types.h on FreeBSD
 # sys/sysctl.h requires sys/param.h on OpenBSD
@@ -29,7 +30,7 @@ AC_CHECK_HEADERS([sys/sysctl.h], [], [],
 #endif
 ])
 
-AC_CHECK_DECLS([be32dec, le32dec, be32enc, le32enc, le16dec, le16enc], [], [],
+AC_CHECK_DECLS([be32dec, le32dec, be32enc, le32enc], [], [],
 [AC_INCLUDES_DEFAULT
 #ifdef HAVE_SYS_ENDIAN_H
 #include <sys/endian.h>
@@ -76,8 +77,8 @@ AC_CHECK_LIB([pthread], [pthread_create], PTHREAD_LIBS="-lpthread",
 ))))
 
 AC_CHECK_LIB([z],[gzopen], [], [])
-dnl AC_CHECK_LIB([ssl],[SSL_free], [], [AC_MSG_ERROR([OpenSSL library required])])
-dnl AC_CHECK_LIB([crypto],[EVP_DigestFinal_ex], [], [AC_MSG_ERROR([OpenSSL library required])])
+AC_CHECK_LIB([ssl],[SSL_free], [], [AC_MSG_ERROR([OpenSSL library required])])
+AC_CHECK_LIB([crypto],[EVP_DigestFinal_ex], [], [AC_MSG_ERROR([OpenSSL library required])])
 
 AM_CONDITIONAL([WANT_JANSSON], [test x$request_jansson = xtrue])
 AM_CONDITIONAL([HAVE_WINDOWS], [test x$have_win32 = xtrue])
@@ -131,16 +132,17 @@ AM_CONDITIONAL([HAVE_NVML], [test -n "$with_nvml"])
 
 NVCC="nvcc"
 
+# static CUDA runtime: the binary needs only the driver (libcuda.so.1)
 if test -n "$with_cuda" ; then
   CUDA_INCLUDES="-I$with_cuda/include"
-  CUDA_LIBS="-lcudart"
+  CUDA_LIBS="-lcudart_static -lrt -ldl"
   CUDA_LDFLAGS="-L$with_cuda/lib$SUFFIX"
   if test -x "$with_cuda/bin/nvcc" ; then
     NVCC="$with_cuda/bin/nvcc"
   fi
 else
   CUDA_INCLUDES="-I/usr/local/cuda/include"
-  CUDA_LIBS="-lcudart -static-libstdc++"
+  CUDA_LIBS="-lcudart_static -lrt -ldl -static-libstdc++"
   CUDA_LDFLAGS="-L/usr/local/cuda/lib$SUFFIX"
 fi
 

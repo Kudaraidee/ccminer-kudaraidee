@@ -104,8 +104,14 @@ typedef enum {
 	__YESCRYPT_INIT_SHARED = 0x30000
 } yescrypt_flags_t;
 
-extern char *client_key;    // NULL for GlobalBoost-Y
-extern size_t client_key_len;
+/* per thread and set by every hash call: the yescrypt variants differ in their key */
+#ifdef _MSC_VER
+#define YESCRYPT_TLS __declspec(thread)
+#else
+#define YESCRYPT_TLS __thread
+#endif
+extern YESCRYPT_TLS char *client_key;    // NULL for GlobalBoost-Y
+extern YESCRYPT_TLS size_t client_key_len;
 
 #define YESCRYPT_KNOWN_FLAGS \
 	(YESCRYPT_RW | YESCRYPT_PARALLEL_SMIX | YESCRYPT_PWXFORM | \

@@ -7,11 +7,7 @@ extern "C" {
 
 #include <ccminer-config.h>
 
-#ifdef __cplusplus
-#include <cstdbool> // C++ equivalent of stdbool.h
-#else
 #include <stdbool.h>
-#endif
 #include <inttypes.h>
 #include <sys/time.h>
 #include <pthread.h>
@@ -293,8 +289,10 @@ extern int scanhash_argon2d500(int thr_id, struct work *work, uint32_t max_nonce
 extern int scanhash_argon2d1000(int thr_id, struct work *work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_argon2d4096(int thr_id, struct work *work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_argon2d16000(int thr_id, struct work *work, uint32_t max_nonce, unsigned long *hashes_done);
+extern int scanhash_argon2id1024(int thr_id, struct work *work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_anime(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_heavyhash(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern int scanhash_balloon(int thr_id, struct work* work, uint32_t max_nonce, unsigned long* hashes_done);
 extern int scanhash_bastion(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_blake256(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done, int8_t blakerounds);
 extern int scanhash_blake2b(int thr_id, struct work *work, uint32_t max_nonce, unsigned long *hashes_done);
@@ -305,16 +303,18 @@ extern int scanhash_c11(int thr_id, struct work* work, uint32_t max_nonce, unsig
 extern int scanhash_cryptolight(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_cryptonight(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_decred(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern int scanhash_sha256dv(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_deep(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_evohash(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern int scanhash_rinhash(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern int scanhash_odocrypt(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_keccak256(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_fresh(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_fugue256(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_gostd(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_groestlcoin(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
-extern int scanhash_hmq17(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern int scanhash_hmq1725(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_heavy(int thr_id,struct work *work, uint32_t max_nonce, unsigned long *hashes_done, uint32_t maxvote, int blocklen);
-extern int scanhash_hoohash(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_hsr(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_jha(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_jackpot(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done); // quark method
@@ -323,6 +323,7 @@ extern int scanhash_luffa(int thr_id, struct work* work, uint32_t max_nonce, uns
 extern int scanhash_lyra2(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_lyra2v2(int thr_id,struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_lyra2Z(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern int scanhash_lyra2z330(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_myriad(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_neoscrypt(int thr_id, struct work *work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_nist5(int thr_id, struct work *work, uint32_t max_nonce, unsigned long *hashes_done);
@@ -331,18 +332,26 @@ extern int scanhash_phi(int thr_id, struct work* work, uint32_t max_nonce, unsig
 extern int scanhash_polytimos(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_quark(int thr_id, struct work *work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_qubit(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
-extern int scanhash_rinhash(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_sha256d(int thr_id, struct work *work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_sha256t(int thr_id, struct work *work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_sha256csm(int thr_id, struct work* work, uint32_t max_nonce, unsigned long* hashes_done);
 extern int scanhash_sha3d(int thr_id, struct work *work, uint32_t max_nonce, unsigned long *hashes_done);
-extern int scanhash_sha3t(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern int scanhash_yespower(int thr_id, struct work *work, uint32_t max_nonce, unsigned long *hashes_done);
+
+extern int scanhash_sha512256d(int thr_id, struct work *work, uint32_t max_nonce, unsigned long *hashes_done);
+/* The scrypt pair keeps its historic signature: it pipelines several launches
+ * per call and reports its own timing window. */
+extern int scanhash_scrypt(int thr_id, struct work *work, uint32_t max_nonce, unsigned long *hashes_done,
+	unsigned char *scratchbuf, struct timeval *tv_start, struct timeval *tv_end);
+extern int scanhash_scrypt_jane(int thr_id, struct work *work, uint32_t max_nonce, unsigned long *hashes_done,
+	unsigned char *scratchbuf, struct timeval *tv_start, struct timeval *tv_end);
+extern void free_scrypt(int thr_id);
+extern void free_scrypt_jane(int thr_id);
 extern int scanhash_sia(int thr_id, struct work *work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_sib(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_skeincoin(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_skein2(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_skunk(int thr_id, struct work *work, uint32_t max_nonce, unsigned long *hashes_done);
-extern int scanhash_skydoge(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_s3(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_timetravel(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_tribus(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
@@ -350,12 +359,12 @@ extern int scanhash_bitcore(int thr_id, struct work* work, uint32_t max_nonce, u
 extern int scanhash_vanilla(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done, int8_t blake_rounds);
 extern int scanhash_veltor(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_whirl(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern int scanhash_whirlx(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_whirlpoolx2(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_wildkeccak(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_x11evo(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_hash0x10(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_x11(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
-extern int scanhash_soterg(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_x13(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_x14(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_x15(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
@@ -365,10 +374,39 @@ extern int scanhash_x16rv2(int thr_id, struct work* work, uint32_t max_nonce, un
 extern int scanhash_x16s(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_x17(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_x21s(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
-extern int scanhash_zr5(int thr_id, struct work *work, uint32_t max_nonce, unsigned long *hashes_done);
+extern int scanhash_skydoge(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern int scanhash_hoohash(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern int scanhash_ghostrider(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern int scanhash_mike(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern int scanhash_flex(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern int scanhash_minotaurx(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern int scanhash_homescrypt(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern int scanhash_verus(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern int scanhash_sha3t(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern int scanhash_soterg(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern int scanhash_x25x(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern int scanhash_curvehash(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern int scanhash_bc3hash(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern int scanhash_pearlhash(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern uint32_t pearl_proof_put(char *b64);
+extern char *pearl_proof_take(uint32_t id);
+extern int scanhash_kawpow(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern void free_kawpow(int thr_id);
+extern int scanhash_meowpow(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern void free_meowpow(int thr_id);
+extern int scanhash_evrprogpow(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern void free_evrprogpow(int thr_id);
+extern int scanhash_firopow(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern void free_firopow(int thr_id);
+extern int scanhash_meraki(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern void free_meraki(int thr_id);
+extern int scanhash_verthash(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern void free_verthash(int thr_id);
 extern int scanhash_equihash(int thr_id, struct work *work, uint32_t max_nonce, unsigned long *hashes_done);
+extern int scanhash_zr5(int thr_id, struct work *work, uint32_t max_nonce, unsigned long *hashes_done);
 
+/* longest yescrypt client key: key, 0x80 and the 64-bit length in one 128-byte block */
+#define YESCRYPT_KEY_MAX 119
 extern int scanhash_yescrypt(int thr_id, struct work* work, uint32_t max_nonce, unsigned long* hashes_done);
 extern int scanhash_yescryptr8(int thr_id, struct work* work, uint32_t max_nonce, unsigned long* hashes_done);
 extern int scanhash_yescryptr16(int thr_id, struct work* work, uint32_t max_nonce, unsigned long* hashes_done);
@@ -384,6 +422,7 @@ extern void free_argon2d500(int thr_id);
 extern void free_argon2d1000(int thr_id);
 extern void free_argon2d4096(int thr_id);
 extern void free_argon2d16000(int thr_id);
+extern void free_argon2id1024(int thr_id);
 extern void free_heavyhash(int thr_id);
 extern void free_bastion(int thr_id);
 extern void free_bitcore(int thr_id);
@@ -404,8 +443,7 @@ extern void free_fugue256(int thr_id);
 extern void free_gostd(int thr_id);
 extern void free_groestlcoin(int thr_id);
 extern void free_heavy(int thr_id);
-extern void free_hmq17(int thr_id);
-extern void free_hoohash(int thr_id);
+extern void free_hmq1725(int thr_id);
 extern void free_hsr(int thr_id);
 extern void free_jackpot(int thr_id);
 extern void free_jha(int thr_id);
@@ -414,6 +452,7 @@ extern void free_luffa(int thr_id);
 extern void free_lyra2(int thr_id);
 extern void free_lyra2v2(int thr_id);
 extern void free_lyra2Z(int thr_id);
+extern void free_lyra2z330(int thr_id);
 extern void free_myriad(int thr_id);
 extern void free_neoscrypt(int thr_id);
 extern void free_nist5(int thr_id);
@@ -422,28 +461,28 @@ extern void free_phi(int thr_id);
 extern void free_polytimos(int thr_id);
 extern void free_quark(int thr_id);
 extern void free_qubit(int thr_id);
+extern void free_rinhash(int thr_id);
 extern void free_sha256d(int thr_id);
 extern void free_sha256csm(int thr_id);
 extern void free_sha256t(int thr_id);
 extern void free_sha3d(int thr_id);
-extern void free_sha3t(int thr_id);
+extern void free_sha512256d(int thr_id);
 extern void free_sia(int thr_id);
 extern void free_sib(int thr_id);
 extern void free_skeincoin(int thr_id);
 extern void free_skein2(int thr_id);
 extern void free_skunk(int thr_id);
-extern void free_skydoge(int thr_id);
 extern void free_s3(int thr_id);
 extern void free_timetravel(int thr_id);
 extern void free_tribus(int thr_id);
 extern void free_vanilla(int thr_id);
 extern void free_veltor(int thr_id);
 extern void free_whirl(int thr_id);
+extern void free_whirlx(int thr_id);
 extern void free_whirlpoolx2(int thr_id);
 extern void free_wildkeccak(int thr_id);
 extern void free_x11evo(int thr_id);
 extern void free_x11(int thr_id);
-extern void free_soterg(int thr_id);
 extern void free_x13(int thr_id);
 extern void free_x14(int thr_id);
 extern void free_x15(int thr_id);
@@ -453,12 +492,31 @@ extern void free_x16rv2(int thr_id);
 extern void free_x16s(int thr_id);
 extern void free_x17(int thr_id);
 extern void free_x21s(int thr_id);
-extern void free_zr5(int thr_id);
+extern void free_skydoge(int thr_id);
+extern void free_hoohash(int thr_id);
 extern void free_ghostrider(int thr_id);
+extern void free_mike(int thr_id);
+extern void free_flex(int thr_id);
+extern void free_minotaurx(int thr_id);
+extern void free_homescrypt(int thr_id);
+extern void free_verus(int thr_id);
+extern void free_sha3t(int thr_id);
+extern void free_soterg(int thr_id);
+extern void free_x25x(int thr_id);
+extern void free_curvehash(int thr_id);
+extern void free_bc3hash(int thr_id);
+extern void free_pearlhash(int thr_id);
 extern void free_equihash(int thr_id);
+void sha3t256_hash(void *state, const void *input);
+void soterg_hash(void *output, const void *input);
+void x25x_hash(void *output, const void *input);
+extern void free_sha256dv(int thr_id);
+extern void free_yespower(int thr_id);
+extern void free_zr5(int thr_id);
 /* api related */
 void *api_thread(void *userdata);
 void api_set_throughput(int thr_id, uint32_t throughput);
+void api_reset_stats_window(void);
 void gpu_increment_reject(int thr_id);
 
 struct monitor_info {
@@ -597,12 +655,17 @@ extern bool have_stratum;
 extern bool opt_stratum_stats;
 extern char *opt_user_agent;
 extern char *opt_cert;
+extern char *opt_verthash_data;
 extern char *opt_proxy;
 extern long opt_proxy_type;
 extern bool use_syslog;
 extern bool use_colors;
 extern int use_pok;
 extern pthread_mutex_t applog_lock;
+/* --api-mode: what the API port speaks. binary is today's behaviour exactly. */
+#define API_MODE_BINARY 0
+#define API_MODE_HTTP   1
+#define API_MODE_BOTH   2
 extern struct thr_info *thr_info;
 extern int longpoll_thr_id;
 extern int stratum_thr_id;
@@ -612,9 +675,8 @@ extern struct work_restart *work_restart;
 extern bool opt_trust_pool;
 extern uint16_t opt_vote;
 
-extern uint32_t opt_batch_size;
-
 extern uint64_t global_hashrate;
+extern volatile int algo_switch_gen;
 extern uint64_t net_hashrate;
 extern double net_diff;
 extern double stratum_diff;
@@ -637,6 +699,7 @@ void cuda_shutdown();
 int cuda_finddevice(char *name);
 int cuda_version();
 void cuda_print_devices();
+void cuda_log_kernel_timeout();
 int cuda_gpu_info(struct cgpu_info *gpu);
 int cuda_available_memory(int thr_id);
 
@@ -680,6 +743,8 @@ void cuda_clear_lasterror();
 #define CL_WHT  "\x1B[01;37m" /* white */
 
 extern void format_hashrate(double hashrate, char *output);
+#define FORMAT_DIFF_LEN 24 /* > the 21-char longest format_diff() result */
+extern const char* format_diff(double diff, char *output, size_t len);
 extern void format_hashrate_unit(double hashrate, char *output, const char* unit);
 extern void applog(int prio, const char *fmt, ...);
 extern void gpulog(int prio, int thr_id, const char *fmt, ...);
@@ -691,6 +756,7 @@ extern bool hex2bin(void *output, const char *hexstr, size_t len);
 extern int timeval_subtract(struct timeval *result, struct timeval *x,
 	struct timeval *y);
 extern bool fulltest(const uint32_t *hash, const uint32_t *target);
+bool work_check_second_nonce(int thr_id, struct work *work, uint32_t *vhash);
 void diff_to_target(uint32_t* target, double diff);
 void work_set_target(struct work* work, double diff);
 double target_to_diff(uint32_t* target);
@@ -729,6 +795,40 @@ struct stratum_job {
 	uint32_t height;
 	uint32_t shares_count;
 	double diff;
+	// Veil SHA256Dv (bespoke notify, see sha256dv.cu)
+	bool          veil_sha256dv;
+	unsigned char veil_midstate_be[32];
+	unsigned char veil_merkle_be[32];
+	uint32_t      veil_ntime;
+	uint32_t      veil_nonce_hi;
+	// KawPoW (Ravencoin) job (ethproxy notify, see algos/kawpow/)
+	bool          is_kawpow;
+	unsigned char kawpow_header[32];  // ProgPoW header_hash
+	unsigned char kawpow_seed[32];    // epoch seed_hash
+	unsigned char kawpow_target[32];  // 256-bit share target, MSB first
+	uint16_t      kawpow_prefix;      // 2-byte extranonce nonce prefix
+	// EqPay (Qtum-derived): hashStateRoot || hashUTXORoot, sent as one 64-byte
+	// notify parameter after prevhash. Wire order, un-swapped.
+	bool          has_eqpay_roots;
+	unsigned char eqpay_roots[64];
+	// Lumenite pools (MeshPool): notify carries the finished 80-byte header and
+	// the extranonce2 the submit must echo; there is no coinbase or merkle.
+	bool          lmt_job;
+	unsigned char lmt_header[80];
+	unsigned char lmt_xnonce2[32];
+	size_t        lmt_xnonce2_len;
+	// Verus: notify param[8] is the solution template (zero-padded to the
+	// chain's fixed 1344 bytes; 0 = none), and mining.set_target the exact
+	// 256-bit share target, MSB first.
+	uint16_t      verus_sol_len;
+#define VERUS_SOL_FIXED_LEN 1344   /* VRSC SOLUTION_SIZE_FIXED; work->extra holds 3 + this */
+	unsigned char verus_solution[VERUS_SOL_FIXED_LEN];
+	bool          has_verus_target;
+	unsigned char verus_target[32];
+	// Pearl (PRL) job, see algos/pearlhash/
+	bool          pearl_job;
+	unsigned char pearl_header[76];
+	char          pearl_target[65];
 };
 
 struct stratum_ctx {
@@ -767,7 +867,17 @@ struct tx {
 	uint32_t len;
 };
 
-#define MAX_NONCES 2
+/* Nonce slots one scanhash return can carry. 7 matches CHECKHASH_NONCES, the
+ * device screen's retention, so the host can take every candidate it kept.
+ *
+ * Carrying fewer loses no shares -- a driver resumes just above the highest
+ * nonce it returned, so the rest are re-found next pass -- but it re-hashes
+ * that part of the batch.
+ *
+ * Raising this alone is inert: a driver must also fill the slots and relax its
+ * resume threshold. The submit path in ccminer.cpp loops to MAX_NONCES.
+ */
+#define MAX_NONCES 7
 struct work {
 	uint32_t data[48];
 	uint32_t target[8];
@@ -797,6 +907,26 @@ struct work {
 	uint32_t scanned_from;
 	uint32_t scanned_to;
 
+	// Veil SHA256Dv job fields (bespoke notify/submit, see sha256dv.cu)
+	bool          veil_sha256dv;
+	unsigned char veil_midstate_be[32];
+	unsigned char veil_merkle_be[32];
+	uint32_t      veil_ntime;
+	uint32_t      veil_nonce_hi;
+	uint32_t      veil_nonce_lo;
+
+	// KawPoW (Ravencoin) job fields (ethproxy notify/submit, see algos/kawpow/)
+	bool          is_kawpow;
+	unsigned char kawpow_header[32];  // ProgPoW header_hash (from notify)
+	unsigned char kawpow_target[32];  // 256-bit share target, MSB first
+	unsigned char kawpow_mix[32];     // mix_hash of the found solution (for submit)
+	uint16_t      kawpow_prefix;      // 2-byte extranonce nonce prefix (top 16 bits)
+	uint64_t      kawpow_nonce;       // full 64-bit nonce of the found solution
+
+	// Pearl (PRL): data[] = raw 76-byte header + trial cursor, nonces[] = proof-stash ids
+	bool          is_pearl;
+	char          pearl_target[65];   // base share target, 64 hex, big-endian
+
 	/* pok getwork txs */
 	uint32_t tx_count;
 	struct tx txs[POK_MAX_TXS];
@@ -821,6 +951,9 @@ struct pool_infos {
 #define POOL_ST_REMOVED 8
 	uint16_t status;
 	int algo;
+	char algo_name[32]; // as written in the config: yespower coin variants share
+	                    // one algo and differ only in (N, r, pers), which the int
+	                    // above cannot carry. Empty unless "algo" was set.
 	char name[64];
 	// credentials
 	char url[512];
@@ -832,6 +965,10 @@ struct pool_infos {
 	double max_rate;
 	int shares_limit;
 	int time_limit;
+	/* Set only when the pool configures its own limit.  An inherited
+	 * command-line limit means stop the miner, not rotate for ever. */
+	bool shares_limit_set;
+	bool time_limit_set;
 	int scantime;
 	// connection
 	struct stratum_ctx stratum;
@@ -861,8 +998,10 @@ void pool_init_defaults(void);
 void pool_set_creds(int pooln);
 void pool_set_attr(int pooln, const char* key, char* arg);
 bool pool_switch_url(char *params);
+bool pool_switch_url_algo(char *params, int algo);
 bool pool_switch(int thr_id, int pooln);
 bool pool_switch_next(int thr_id);
+void pool_reset_algo_stats(void);
 int pool_get_first_valid(int startfrom);
 bool parse_pool_array(json_t *obj);
 void pool_dump_infos(void);
@@ -874,9 +1013,17 @@ json_t * json_rpc_longpoll(CURL *curl, char *lp_url, struct pool_infos*,
 
 bool stratum_socket_full(struct stratum_ctx *sctx, int timeout);
 bool stratum_send_line(struct stratum_ctx *sctx, char *s);
+/* Monotonic JSON-RPC id for a mining.submit, plus the difficulty it carried.
+ * Every submit path must use both: an id built any other way is not in the
+ * ring and reads back as another share's difficulty. */
+uint32_t submit_id_next(void);
+void submit_id_remember(uint32_t id, double diff);
 char *stratum_recv_line(struct stratum_ctx *sctx);
 bool stratum_connect(struct stratum_ctx *sctx, const char *url);
 void stratum_disconnect(struct stratum_ctx *sctx);
+/* As above, but not counted as a pool failure: the control API drops the
+ * socket on purpose, and pools[i].disconnects must stay a health signal. */
+void stratum_disconnect_intentional(struct stratum_ctx *sctx);
 bool stratum_subscribe(struct stratum_ctx *sctx);
 bool stratum_authorize(struct stratum_ctx *sctx, const char *user, const char *pass);
 bool stratum_handle_method(struct stratum_ctx *sctx, const char *s);
@@ -894,7 +1041,11 @@ int equi_verify_sol(void * const hdr, void * const sol);
 int eq_variant_storelen(void); // bytes in work->extra to submit (compactSize+solution)
 int eq_variant_wk(void);       // active equihash k (9 for 200/9, 5 for 144/5)
 void eq_set_variant_144(void); // select 144/5 (BitcoinZ) variant (from -a alias)
+void eq_set_variant_192(void); // select 192/7 variant (from -a alias)
 void eq_set_variant_params(int wn, int wk, const char* personal); // pool notify: adopt personal; (n,k) validate-only (fixed by -a)
+bool yespower_set_variant(const char* name); // select a coin variant's N/r/pers (from -a alias or pool "algo"); false = no such variant
+void yespower_clear_variant(void);           // back to --yespower-param/-key
+const char* yespower_variant_name(void);     // selected variant, "" if none
 double equi_network_diff(struct work *work);
 
 void hashlog_remember_submit(struct work* work, uint32_t nonce);
@@ -968,11 +1119,10 @@ void fresh_hash(void *state, const void *input);
 void fugue256_hash(unsigned char* output, const unsigned char* input, int len);
 void gostd_hash(void *output, const void *input);
 void heavycoin_hash(unsigned char* output, const unsigned char* input, int len);
-void hmq17hash(void *output, const void *input);
+void hmq1725hash(void *output, const void *input);
 void hsr_hash(void *output, const void *input);
 void keccak256_hash(void *state, const void *input);
 void sha3d_hash(void *state, const void *input);
-void sha3t256_hash(void *state, const void *input);
 void jackpothash(void *state, const void *input);
 void groestlhash(void *state, const void *input);
 void jha_hash(void *output, const void *input);
@@ -993,12 +1143,11 @@ void scryptjane_hash(void* output, const void* input);
 void sha256csm_hash(void* output, const void* input);
 void sha256d_hash(void *output, const void *input);
 void sha256t_hash(void *output, const void *input);
-void sia_blake2b_hash(void *output, const void *input);
+void sia_blake2b_hash(void* output, const void* input);
 void sibhash(void *output, const void *input);
 void skeincoinhash(void *output, const void *input);
 void skein2hash(void *output, const void *input);
 void skunk_hash(void *state, const void *input);
-void skydoge_hash(void *output, const void *input);
 void s3hash(void *output, const void *input);
 void timetravel_hash(void *output, const void *input);
 void bitcore_hash(void *output, const void *input);
@@ -1010,7 +1159,6 @@ void whirlpoolx2_hash(void *state, const void *input);
 void x11evo_hash(void *output, const void *input);
 void hash0x10(void *output, const void *input);
 void x11hash(void *output, const void *input);
-void soterg_hash(void *output, const void *input);
 void x13hash(void *output, const void *input);
 void x14hash(void *output, const void *input);
 void x15hash(void *output, const void *input);
@@ -1020,6 +1168,7 @@ void x16rv2_hash(void *output, const void *input);
 void x16s_hash(void *output, const void *input);
 void x17hash(void *output, const void *input);
 void x21s_hash(void *output, const void *input);
+void skydoge_hash(void *output, const void *input);
 void wildkeccak_hash(void *output, const void *input, uint64_t* scratchpad, uint64_t ssize);
 void yescrypt_hash(void* output, const void* input);
 void yescryptr8_hash(void* output, const void* input);
@@ -1029,7 +1178,6 @@ void yescryptr24_hash(void* output, const void* input);
 void yescryptr32_hash(void* output, const void* input);
 void zr5hash(void *output, const void *input);
 void zr5hash_pok(void *output, uint32_t *pdata);
-void ghostrider_hash(void* output, const void* input);
 
 #ifdef __cplusplus
 }

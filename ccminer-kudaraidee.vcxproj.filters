@@ -1,0 +1,1491 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{2450a9c7-a97a-49e1-ba19-c8dbc5a4e3e7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\gettimeofday">
+      <UniqueIdentifier>{c53ce808-c5c5-4c6c-99a2-3947090c62f1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\getopt">
+      <UniqueIdentifier>{5a45c1bf-81d2-4bc6-97b5-714e34f51a82}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{431cec61-9376-4de9-aae9-04c4250652e7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\compat">
+      <UniqueIdentifier>{cc8bb259-5332-4a45-ba81-f4840a55b604}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\compat\getopt">
+      <UniqueIdentifier>{89362bd8-4690-4f0c-a4f7-6b2fa67a1f34}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\compat\sys">
+      <UniqueIdentifier>{6c3cd392-b6b8-424c-87d2-10e33dbd4b41}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA">
+      <UniqueIdentifier>{5a31b6f4-4943-4b22-b69a-230f3cc96269}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\CUDA">
+      <UniqueIdentifier>{a0f072d0-a831-4c23-8d64-7a026521df9c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\JHA">
+      <UniqueIdentifier>{d8f2e173-a0a5-455b-8efc-42511b585156}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\quark">
+      <UniqueIdentifier>{dd0822bd-27cc-4d5c-8e2f-cf7d9b00feb4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\sph">
+      <UniqueIdentifier>{0dc051db-f833-476f-b3f4-c69fd03b9348}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\sph">
+      <UniqueIdentifier>{7c2a98c6-064c-4a69-b803-d6f6ff5edd0b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\heavy">
+      <UniqueIdentifier>{c3222908-22ba-4586-a637-6363f455b06d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\qubit">
+      <UniqueIdentifier>{f3ed23a2-8ce7-41a5-b051-6da56047dc35}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\skunk">
+      <UniqueIdentifier>{23ed23a2-8e7a-65a2-b051-8aa63047d352}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\x11">
+      <UniqueIdentifier>{dd751f2d-bfd6-42c1-8f9b-cbe94e539353}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\x13">
+      <UniqueIdentifier>{d67a2af7-4851-4d21-910e-87791bc8ee35}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\hsr">
+      <UniqueIdentifier>{c0ffee02-1234-4b22-b69a-230f3cc96abe}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\x15">
+      <UniqueIdentifier>{a2403c22-6777-46ab-a55a-3fcc7386c974}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\hoohash">
+      <UniqueIdentifier>{b7a1c33d-9e42-4c18-8f6b-1a2d4e5f6071}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\x16">
+      <UniqueIdentifier>{55dfae6a-66ba-43e2-8ceb-98ee70cbdf16}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\common">
+      <UniqueIdentifier>{c0ffee00-1234-4b22-b69a-230f3cc96abc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\stages">
+      <UniqueIdentifier>{c0ffee01-1234-4b22-b69a-230f3cc96abd}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\x17">
+      <UniqueIdentifier>{85dfae6a-66ca-4332-8cec-98ee70cbdf2f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\x21">
+      <UniqueIdentifier>{64ac22a6-f49f-11e8-a49f-e3788c43d09c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\x25x">
+      <UniqueIdentifier>{7c9f1e2a-3b4d-4c6e-8f10-2a5b7d9e0c31}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\pentablake">
+      <UniqueIdentifier>{3f2a9c14-7b6d-4e58-9a1c-2d5e8f0a4b73}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\zr5">
+      <UniqueIdentifier>{4a3b9d25-8c7e-4f69-a02d-3e6f9a1b5c84}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\jansson">
+      <UniqueIdentifier>{17b56151-79ec-4a32-bac3-9d94ae7f68fe}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\compat\nvapi">
+      <UniqueIdentifier>{ef6f9983-bda5-4fb2-adfa-ac4f29b74f25}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\blake256">
+      <UniqueIdentifier>{9762c92c-9677-4044-8292-ff6ba4bfdd89}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\decred">
+      <UniqueIdentifier>{bb3189a5-3e1d-47ef-a16a-486c4b9a88ba}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\blake2s">
+      <UniqueIdentifier>{a1b2c3d4-0011-4a5b-8c6d-7e8f90123456}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\bmw">
+      <UniqueIdentifier>{b2c3d4e5-0022-4b6c-9d7e-8f9012345678}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\lyra2">
+      <UniqueIdentifier>{2ff6e4ce-7c92-4cb2-a3ad-c331e94fd81d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Ressources">
+      <UniqueIdentifier>{f5117ccb-a70d-411a-b7ea-d6faed230bc7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\scrypt">
+      <UniqueIdentifier>{c26f5b02-37b5-4420-a4e8-ee1ad517dc95}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\neoscrypt">
+      <UniqueIdentifier>{2037fd0d-e7a2-4da8-956c-150aec726a99}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\lyra2">
+      <UniqueIdentifier>{1613763f-895c-4321-b58b-6f5849868956}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\lbry">
+      <UniqueIdentifier>{3079ea1f-f768-455a-acd6-f517fac535b4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\sha256">
+      <UniqueIdentifier>{86a896c0-1688-4854-98e3-285d166069a3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\keccak">
+      <UniqueIdentifier>{b41a1f81-6d21-4a70-b74a-6db518591a3e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\sia">
+      <UniqueIdentifier>{86a896c0-1688-4854-98e0-285d166069a3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\cryptonight">
+      <UniqueIdentifier>{fea0fce3-c0fe-42f7-aa37-0cbba10b008a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\cryptonight\xmr">
+      <UniqueIdentifier>{af52b078-ed91-4c6e-b07a-e9243acc85d2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\cryptonight\bbr">
+      <UniqueIdentifier>{af387eac-e9e6-4e91-a5e8-637b1e7a8d93}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\xmr">
+      <UniqueIdentifier>{0f9aec5e-5409-488f-992a-2c108590d1ac}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\equihash">
+      <UniqueIdentifier>{031afae7-2a78-4e32-9738-4b589b6f7ff3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\tribus">
+      <UniqueIdentifier>{1e548d79-c217-4203-989a-a592fe2b2de3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\yescrypt">
+      <UniqueIdentifier>{600e2767-1d6f-4434-9f53-5fa16bd1385f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\yespower">
+      <UniqueIdentifier>{7f3a1c62-9e04-4d18-b5a7-2c9d61e8f4b3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\CUDA\balloon">
+      <UniqueIdentifier>{da9944d6-30eb-4887-b42f-a91e1f63091c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\balloon">
+      <UniqueIdentifier>{3f1a032d-6cd2-4637-b103-ee835a1ead32}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="compat\jansson\dump.c">
+      <Filter>Source Files\jansson</Filter>
+    </ClCompile>
+    <ClCompile Include="compat\jansson\hashtable.c">
+      <Filter>Source Files\jansson</Filter>
+    </ClCompile>
+    <ClCompile Include="compat\jansson\load.c">
+      <Filter>Source Files\jansson</Filter>
+    </ClCompile>
+    <ClCompile Include="compat\jansson\strbuffer.c">
+      <Filter>Source Files\jansson</Filter>
+    </ClCompile>
+    <ClCompile Include="compat\jansson\utf.c">
+      <Filter>Source Files\jansson</Filter>
+    </ClCompile>
+    <ClCompile Include="compat\jansson\value.c">
+      <Filter>Source Files\jansson</Filter>
+    </ClCompile>
+    <ClCompile Include="compat\getopt\getopt_long.c">
+      <Filter>Source Files\getopt</Filter>
+    </ClCompile>
+    <ClCompile Include="compat\gettimeofday.c">
+      <Filter>Source Files\gettimeofday</Filter>
+    </ClCompile>
+    <ClCompile Include="core\util.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ccminer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="core\pools.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\aes_helper.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\blake.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\blake2s.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\bmw.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\cubehash.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\echo.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\fugue.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\groestl.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\jh.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\keccak.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\luffa.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\sha2.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\shavite.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\simd.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\skein.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\hamsi.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\hamsi_helper.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\shabal.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\whirlpool.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\haval.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\ripemd.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\sph_sha2.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\sha2big.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\streebog.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\tiger.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\hsr\sm3.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="compat\winansi.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="core\hashlog.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="core\stats.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="core\api\api.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\scrypt\scrypt.cpp">
+      <Filter>Source Files\CUDA\scrypt</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\scrypt\scrypt-jane.cpp">
+      <Filter>Source Files\CUDA\scrypt</Filter>
+    </ClCompile>
+    <ClCompile Include="core\api\api_control.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="core\api\api_metrics.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="core\api\api_model.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="core\api\api_http.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="core\api\api_routes.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="core\gpu\nvml.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="core\sysinfos.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="compat\jansson\memory.c">
+      <Filter>Source Files\jansson</Filter>
+    </ClCompile>
+    <ClCompile Include="compat\jansson\pack_unpack.c">
+      <Filter>Source Files\jansson</Filter>
+    </ClCompile>
+    <ClCompile Include="compat\jansson\strconv.c">
+      <Filter>Source Files\jansson</Filter>
+    </ClCompile>
+    <ClCompile Include="compat\jansson\error.c">
+      <Filter>Source Files\jansson</Filter>
+    </ClCompile>
+    <ClInclude Include="compat\pthreads\pthread.h">
+      <Filter>Header Files\compat</Filter>
+    </ClInclude>
+    <ClCompile Include="algos\lyra2\Lyra2.c">
+      <Filter>Source Files\CUDA\lyra2</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\lyra2\Sponge.c">
+      <Filter>Source Files\CUDA\lyra2</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\lyra2\Lyra2Z.c">
+      <Filter>Source Files\CUDA\lyra2</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\neoscrypt\neoscrypt.cpp">
+      <Filter>Source Files\neoscrypt</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\neoscrypt\neoscrypt-cpu.c">
+      <Filter>Source Files\neoscrypt</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\skein\skein2.cpp">
+      <Filter>Source Files\CUDA</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\fugue\fuguecoin.cpp">
+      <Filter>Source Files\CUDA</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\groestlcoin\groestlcoin.cpp">
+      <Filter>Source Files\CUDA</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\myriadgroestl\myriadgroestl.cpp">
+      <Filter>Source Files\CUDA</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\heavy\hefty1.c">
+      <Filter>Source Files\CUDA\heavy</Filter>
+    </ClCompile>
+    <ClCompile Include="core\bench.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="core\bignum.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="core\gpu\nvapi.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="core\gpu\nvsettings.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\sia\sia-rpc.cpp">
+      <Filter>Source Files\sia</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\cryptonight\xmr-rpc.cpp">
+      <Filter>Source Files\cryptonight</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\cryptonight\aesb.cpp">
+      <Filter>Source Files\cryptonight\xmr</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\cryptonight\cpu\c_keccak.c">
+      <Filter>Source Files\cryptonight\xmr</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\cryptonight\oaes_lib.cpp">
+      <Filter>Source Files\cryptonight\xmr</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\cryptonight\cryptolight-cpu.cpp">
+      <Filter>Source Files\cryptonight\xmr</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\cryptonight\cryptonight-cpu.cpp">
+      <Filter>Source Files\cryptonight\xmr</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\mike\mike_hash.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\flex\flex_hash.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\minotaurx\minotaurx_hash.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\homescrypt\homescrypt_hash.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\verus\haraka.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\verus\haraka_portable.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\verus\verus_clhash.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\verus\verus_host.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\cryptonight\mman.c">
+      <Filter>Source Files\cryptonight\bbr</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\cryptonight\wildkeccak-cpu.cpp">
+      <Filter>Source Files\cryptonight\bbr</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\equihash\equi.cpp">
+      <Filter>Source Files\equihash</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\equihash\equi_verify_144.cpp">
+      <Filter>Source Files\equihash</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\equihash\equi_verify_192.cpp">
+      <Filter>Source Files\equihash</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\equihash\equihash.cpp">
+      <Filter>Source Files\equihash</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\equihash\equi-stratum.cpp">
+      <Filter>Source Files\equihash</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\equihash\blake2\blake2bx.cpp">
+      <Filter>Source Files\equihash</Filter>
+    </ClCompile>
+    <ClCompile Include="algos/heavyhash/heavyhash-gate.c" />
+    <ClCompile Include="algos/heavyhash/keccak_tiny.c" />
+    <ClCompile Include="sph\sha3d.c" />
+    <ClCompile Include="sph\sha3.c" />
+    <ClCompile Include="sph\yescrypt-common.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\yescrypt-opt.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\yespower_ref.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\yespower_b2b_ref.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\hmac_blake2b.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\sha256_Y.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\argon2d\argon2ref\argon2.c" />
+    <ClCompile Include="algos\argon2d\argon2ref\blake2\blake2b.c" />
+    <ClCompile Include="algos\argon2d\argon2ref\core.c" />
+    <ClCompile Include="algos\argon2d\argon2ref\encoding.c" />
+    <ClCompile Include="algos\argon2d\argon2ref\opt.c" />
+    <ClCompile Include="algos\argon2d\argon2ref\thread.c" />
+    <ClCompile Include="algos\x25x\swifftx.c">
+      <Filter>Source Files\CUDA\x25x</Filter>
+    </ClCompile>
+    <ClCompile Include="sph\sph_panama.c">
+      <Filter>Source Files\sph</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\x25x\lane.c">
+      <Filter>Source Files\CUDA\x25x</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\balloon\balloon.cpp">
+      <Filter>Source Files\balloon</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\balloon\balloon_scan.cpp">
+      <Filter>Source Files\balloon</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\balloon\balloon_selftest.cpp">
+      <Filter>Source Files\balloon</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\rinhash\rinhash_scanhash.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\curvehash\curvehash_oracle.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\bc3hash\bc3hash_oracle.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\curvehash\secp256k1_unity.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\verthash\verthash-cpu.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\verthash\verthash-data.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\kawpow\kawpow.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\progpow_multi\ppmulti_bridge.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\progpow_multi\ppmulti_core.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\progpow_multi\ppmulti_dag.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\progpow_multi\ppmulti_epoch.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\progpow_multi\ppmulti_jit.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\progpow_multi\progpow_pp.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\kawpow\kawpow_core.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\odocrypt\odocrypt_jit.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\kawpow\ethash\ethash.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\kawpow\ethash\progpow.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\kawpow\ethash\managed.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\kawpow\ethash\primes.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\kawpow\ethash\keccak.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\kawpow\ethash\keccakf1600.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\kawpow\ethash\keccakf800.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\odocrypt\odocrypt_host.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\balloon\sha256-ref.c">
+      <Filter>Source Files\balloon</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="algos.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="compat.h">
+      <Filter>Header Files\compat</Filter>
+    </ClInclude>
+    <ClInclude Include="compat\elist.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="core\api\api_control.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="core\api\api_metrics.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="core\api\api_model.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="core\api\api_http.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="core\api\api_routes.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="miner.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="compat\sys\time.h">
+      <Filter>Header Files\compat\sys</Filter>
+    </ClInclude>
+    <ClInclude Include="compat\unistd.h">
+      <Filter>Header Files\compat</Filter>
+    </ClInclude>
+    <ClInclude Include="compat\inttypes.h">
+      <Filter>Header Files\compat</Filter>
+    </ClInclude>
+    <ClInclude Include="compat\getopt\getopt.h">
+      <Filter>Header Files\compat\getopt</Filter>
+    </ClInclude>
+    <ClInclude Include="compat\stdbool.h">
+      <Filter>Header Files\compat</Filter>
+    </ClInclude>
+    <ClInclude Include="compat\ccminer-config.h">
+      <Filter>Header Files\compat</Filter>
+    </ClInclude>
+    <ClInclude Include="compat\bitcoin\uint256.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\groestlcoin\cuda_groestl.h">
+      <Filter>Header Files\CUDA</Filter>
+    </ClInclude>
+    <ClInclude Include="sph\blake2b.h">
+      <Filter>Header Files\sph</Filter>
+    </ClInclude>
+    <ClInclude Include="sph\blake2s.h">
+      <Filter>Header Files\sph</Filter>
+    </ClInclude>
+    <ClInclude Include="sph\sph_blake.h">
+      <Filter>Header Files\sph</Filter>
+    </ClInclude>
+    <ClInclude Include="sph\sph_bmw.h">
+      <Filter>Header Files\sph</Filter>
+    </ClInclude>
+    <ClInclude Include="sph\sph_cubehash.h">
+      <Filter>Header Files\sph</Filter>
+    </ClInclude>
+    <ClInclude Include="sph\sph_echo.h">
+      <Filter>Header Files\sph</Filter>
+    </ClInclude>
+    <ClInclude Include="sph\sph_fugue.h">
+      <Filter>Header Files\sph</Filter>
+    </ClInclude>
+    <ClInclude Include="sph\sph_groestl.h">
+      <Filter>Header Files\sph</Filter>
+    </ClInclude>
+    <ClInclude Include="sph\sph_jh.h">
+      <Filter>Header Files\sph</Filter>
+    </ClInclude>
+    <ClInclude Include="sph\sph_keccak.h">
+      <Filter>Header Files\sph</Filter>
+    </ClInclude>
+    <ClInclude Include="sph\sph_luffa.h">
+      <Filter>Header Files\sph</Filter>
+    </ClInclude>
+    <ClInclude Include="sph\sph_shavite.h">
+      <Filter>Header Files\sph</Filter>
+    </ClInclude>
+    <ClInclude Include="sph\sph_simd.h">
+      <Filter>Header Files\sph</Filter>
+    </ClInclude>
+    <ClInclude Include="sph\sph_skein.h">
+      <Filter>Header Files\sph</Filter>
+    </ClInclude>
+    <ClInclude Include="sph\sph_types.h">
+      <Filter>Header Files\sph</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\heavy\heavy.h">
+      <Filter>Header Files\CUDA</Filter>
+    </ClInclude>
+    <ClInclude Include="cuda\helper.cuh">
+      <Filter>Header Files\CUDA</Filter>
+    </ClInclude>
+    <ClInclude Include="cuda\helper_alexis.cuh">
+      <Filter>Header Files\CUDA</Filter>
+    </ClInclude>
+    <ClInclude Include="cuda\vector_uint2x4.cuh">
+      <Filter>Header Files\CUDA</Filter>
+    </ClInclude>
+    <ClInclude Include="sph\sph_hamsi.h">
+      <Filter>Header Files\sph</Filter>
+    </ClInclude>
+    <ClInclude Include="sph\sph_shabal.h">
+      <Filter>Header Files\sph</Filter>
+    </ClInclude>
+    <ClInclude Include="sph\sph_streebog.h">
+      <Filter>Header Files\sph</Filter>
+    </ClInclude>
+    <ClInclude Include="sph\sph_tiger.h">
+      <Filter>Header Files\sph</Filter>
+    </ClInclude>
+    <ClInclude Include="sph\sph_whirlpool.h">
+      <Filter>Header Files\sph</Filter>
+    </ClInclude>
+    <ClInclude Include="sph\sph_haval.h">
+      <Filter>Header Files\sph</Filter>
+    </ClInclude>
+    <ClInclude Include="sph\sph_sha2.h">
+      <Filter>Header Files\sph</Filter>
+    </ClInclude>
+    <ClInclude Include="compat\winansi.h">
+      <Filter>Header Files\compat</Filter>
+    </ClInclude>
+    <ClInclude Include="core\gpu\nvml.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="compat\nvapi\nvapi_ccminer.h">
+      <Filter>Header Files\compat\nvapi</Filter>
+    </ClInclude>
+    <ClInclude Include="compat\nvapi\nvapi_lite_sli.h">
+      <Filter>Header Files\compat\nvapi</Filter>
+    </ClInclude>
+    <ClInclude Include="compat\nvapi\nvapi_lite_stereo.h">
+      <Filter>Header Files\compat\nvapi</Filter>
+    </ClInclude>
+    <ClInclude Include="compat\nvapi\nvapi_lite_surround.h">
+      <Filter>Header Files\compat\nvapi</Filter>
+    </ClInclude>
+    <ClInclude Include="compat\nvapi\nvapi.h">
+      <Filter>Header Files\compat\nvapi</Filter>
+    </ClInclude>
+    <ClInclude Include="compat\nvapi\nvapi_lite_common.h">
+      <Filter>Header Files\compat\nvapi</Filter>
+    </ClInclude>
+    <ClInclude Include="compat\nvapi\nvapi_lite_d3dext.h">
+      <Filter>Header Files\compat\nvapi</Filter>
+    </ClInclude>
+    <ClInclude Include="compat\nvapi\nvapi_lite_salend.h">
+      <Filter>Header Files\compat\nvapi</Filter>
+    </ClInclude>
+    <ClInclude Include="compat\nvapi\nvapi_lite_salstart.h">
+      <Filter>Header Files\compat\nvapi</Filter>
+    </ClInclude>
+    <ClInclude Include="compat\jansson\jansson_config.h">
+      <Filter>Header Files\compat</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\lyra2\Lyra2.h">
+      <Filter>Header Files\lyra2</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\lyra2\Lyra2Z.h">
+      <Filter>Header Files\lyra2</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\lyra2\Sponge.h">
+      <Filter>Header Files\lyra2</Filter>
+    </ClInclude>
+    <ClInclude Include="cuda\blake2b_device.cuh">
+      <Filter>Source Files\CUDA\lyra2</Filter>
+    </ClInclude>
+    <ClInclude Include="cuda\lyra2_device.cuh">
+      <Filter>Source Files\CUDA\lyra2</Filter>
+    </ClInclude>
+    <ClInclude Include="cuda\groestl512_x2_device.cuh">
+      <Filter>Source Files\CUDA\quark</Filter>
+    </ClInclude>
+    <ClInclude Include="cuda\echo512_device.cuh">
+      <Filter>Source Files\CUDA\x11</Filter>
+    </ClInclude>
+    <ClInclude Include="cuda\shavite512_device.cuh">
+      <Filter>Source Files\CUDA\x11</Filter>
+    </ClInclude>
+    <ClInclude Include="cuda\shavite512_sp_device.cuh">
+      <Filter>Source Files\CUDA\x11</Filter>
+    </ClInclude>
+    <ClInclude Include="cuda\whirlpool512_x4_device.cuh">
+      <Filter>Source Files\CUDA\x15</Filter>
+    </ClInclude>
+    <ClInclude Include="cuda\tiger192_device.cuh">
+      <Filter>Source Files\CUDA\x21</Filter>
+    </ClInclude>
+    <ClInclude Include="res\resource.h">
+      <Filter>Ressources</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\scrypt\salsa_kernel.h">
+      <Filter>Source Files\CUDA\scrypt</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\scrypt\nv_kernel2.h">
+      <Filter>Source Files\CUDA\scrypt</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\scrypt\titan_kernel.h">
+      <Filter>Source Files\CUDA\scrypt</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\scrypt\scrypt-jane.h">
+      <Filter>Source Files\CUDA\scrypt</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\neoscrypt\neoscrypt.h">
+      <Filter>Source Files\neoscrypt</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\neoscrypt\cuda_vectors.h">
+      <Filter>Source Files\neoscrypt</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\heavy\hefty1.h">
+      <Filter>Source Files\CUDA\heavy</Filter>
+    </ClInclude>
+    <ClInclude Include="compat\bitcoin\bignum.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <CudaCompile Include="algos\quark\anime.cu">
+      <Filter>Source Files\CUDA\quark</Filter>
+    </CudaCompile>
+    <ClInclude Include="algos\sia\sia-rpc.h">
+      <Filter>Source Files\sia</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\cryptonight\xmr-rpc.h">
+      <Filter>Source Files\cryptonight</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\cryptonight\mman.h">
+      <Filter>Source Files\cryptonight\bbr</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\cryptonight\wildkeccak.h">
+      <Filter>Source Files\cryptonight\bbr</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\cryptonight\cn_aes.cuh">
+      <Filter>Source Files\CUDA\xmr</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\cryptonight\cn_blake.cuh">
+      <Filter>Source Files\CUDA\xmr</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\cryptonight\cn_groestl.cuh">
+      <Filter>Source Files\CUDA\xmr</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\cryptonight\cn_jh.cuh">
+      <Filter>Source Files\CUDA\xmr</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\cryptonight\cn_keccak.cuh">
+      <Filter>Source Files\CUDA\xmr</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\cryptonight\cn_skein.cuh">
+      <Filter>Source Files\CUDA\xmr</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\cryptonight\cryptolight.h">
+      <Filter>Source Files\CUDA\xmr</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\cryptonight\cryptonight.h">
+      <Filter>Source Files\CUDA\xmr</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\equihash\eqcuda.hpp">
+      <Filter>Source Files\equihash</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\equihash\equi_pack.h">
+      <Filter>Source Files\equihash</Filter>
+    </ClInclude>
+    <ClInclude Include="algos/heavyhash/heavyhash-gate.h" />
+    <ClInclude Include="algos/heavyhash/keccak_tiny.h" />
+    <ClInclude Include="algos\common\cuda_x_fused.h">
+      <Filter>Header Files\CUDA</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\common\cuda_x_stages.h">
+      <Filter>Header Files\CUDA</Filter>
+    </ClInclude>
+    <ClInclude Include="sph\sph_sha3d.h" />
+    <ClInclude Include="sph\sha3.h" />
+    <ClInclude Include="sph\yescrypt.h">
+      <Filter>Header Files\sph</Filter>
+    </ClInclude>
+    <ClInclude Include="sph\yespower.h">
+      <Filter>Header Files\sph</Filter>
+    </ClInclude>
+    <ClInclude Include="cuda\salsa_device.cuh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="cuda\pwxform_device.cuh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\yespower\yespower_smix.cuh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\yespower\yespower_head_tail.cuh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\yespower\yespower_hash.cuh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="sph\yescrypt-platform.h">
+      <Filter>Header Files\sph</Filter>
+    </ClInclude>
+    <ClInclude Include="sph\SHA3api_ref.h">
+      <Filter>Header Files\sph</Filter>
+    </ClInclude>
+    <ClInclude Include="sph\sha256_Y.h">
+      <Filter>Header Files\sph</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\argon2d\argon2ref\argon2.h" />
+    <ClInclude Include="algos\argon2d\argon2ref\core.h" />
+    <ClInclude Include="algos\argon2d\argon2ref\encoding.h" />
+    <ClInclude Include="algos\argon2d\argon2ref\thread.h" />
+    <ClInclude Include="algos\argon2d\argon2ref\blake2\blake2.h" />
+    <ClInclude Include="algos\argon2d\argon2ref\blake2\blake2-impl.h" />
+    <ClInclude Include="algos\argon2d\argon2ref\blake2\blamka-round-opt.h" />
+    <ClInclude Include="algos\argon2d\argon2ref\blake2\blamka-round-ref.h" />
+    <ClInclude Include="algos\argon2d\argon2d_kernel.h" />
+    <ClInclude Include="algos\argon2d\argon2d_blake2b_device.cuh" />
+    <ClInclude Include="algos\argon2d\cudaexception.h" />
+    <ClInclude Include="algos\balloon\balloon.h">
+      <Filter>Source Files\balloon</Filter>
+    </ClInclude>
+    <ClInclude Include="algos\balloon\sha256.h">
+      <Filter>Source Files\balloon</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CudaCompile Include="core\cuda.cpp">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\groestlcoin\cuda_groestl.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_jha_keccak512.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\jha\jha.cu">
+      <Filter>Source Files\CUDA\JHA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\jha\jackpot.cu">
+      <Filter>Source Files\CUDA\JHA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\myriadgroestl\cuda_myriadgroestl.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\jha\cuda_jha_compactionTest.cu">
+      <Filter>Source Files\CUDA\JHA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_jh512.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_blake512.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_groestl512.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_skein512.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\heavy\cuda_heavy_blake512.cu">
+      <Filter>Source Files\CUDA\heavy</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\heavy\cuda_combine.cu">
+      <Filter>Source Files\CUDA\heavy</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\heavy\cuda_heavy_groestl512.cu">
+      <Filter>Source Files\CUDA\heavy</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\heavy\cuda_hefty1.cu">
+      <Filter>Source Files\CUDA\heavy</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\heavy\cuda_heavy_keccak512.cu">
+      <Filter>Source Files\CUDA\heavy</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\heavy\cuda_sha256.cu">
+      <Filter>Source Files\CUDA\heavy</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\heavy\heavy.cu">
+      <Filter>Source Files\CUDA\heavy</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\heavy\bastion.cu">
+      <Filter>Source Files\CUDA\heavy</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\heavy\cuda_bastion.cu">
+      <Filter>Source Files\CUDA\heavy</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_bmw512.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_quark_compactionTest.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_keccak512.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\quark\nist5.cu">
+      <Filter>Source Files\CUDA\quark</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\quark\quark.cu">
+      <Filter>Source Files\CUDA\quark</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\qubit\deep.cu">
+      <Filter>Source Files\CUDA\qubit</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\qubit\luffa.cu">
+      <Filter>Source Files\CUDA\qubit</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\qubit\qubit.cu">
+      <Filter>Source Files\CUDA\qubit</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_luffa512_80.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <ClInclude Include="cuda\aes_device.cuh">
+      <Filter>Header Files\CUDA</Filter>
+    </ClInclude>
+    <ClInclude Include="cuda\aes_sp_device.cuh">
+      <Filter>Header Files\CUDA</Filter>
+    </ClInclude>
+    <CudaCompile Include="algos\stages\cuda_cubehash512.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_cubehash512_80.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_echo512_compat.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_luffa512.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_shavite512_legacy.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_shavite512.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_simd512.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <ClInclude Include="algos\stages\cuda_simd512_func.cuh">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </ClInclude>
+    <CudaCompile Include="algos\x11\c11.cu">
+      <Filter>Source Files\CUDA\x11</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x11\fresh.cu">
+      <Filter>Source Files\CUDA\x11</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x11\0x10.cu">
+      <Filter>Source Files\CUDA\x11</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x11\x11.cu">
+      <Filter>Source Files\CUDA\x11</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x11\x11evo.cu">
+      <Filter>Source Files\CUDA\x11</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_fugue512.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_hamsi512.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x13\x13.cu">
+      <Filter>Source Files\CUDA\x13</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\hsr\cuda_hsr_sm3.cu">
+      <Filter>Source Files\CUDA\hsr</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\hsr\hsr.cu">
+      <Filter>Source Files\CUDA\hsr</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\common\cuda_checkhash.cu">
+      <Filter>Source Files\CUDA\common</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x15\x14.cu">
+      <Filter>Source Files\CUDA\x15</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_shabal512.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x15\x15.cu">
+      <Filter>Source Files\CUDA\x15</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_whirlpool512.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_whirlpool512_80.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x15\whirlpool.cu">
+      <Filter>Source Files\CUDA\x15</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x15\whirlpoolx.cu">
+      <Filter>Source Files\CUDA\x15</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x15\cuda_whirlpoolx.cu">
+      <Filter>Source Files\CUDA\x15</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\whirlpoolx2\whirlpoolx2.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\whirlpoolx2\cuda_whirlpoolx2.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_haval256.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_sha512.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x17\hmq1725.cu">
+      <Filter>Source Files\CUDA\x17</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x17\x17.cu">
+      <Filter>Source Files\CUDA\x17</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x17\skydoge.cu">
+      <Filter>Source Files\CUDA\x17</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\soterg\soterg.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\pentablake\pentablake.cu">
+      <Filter>Source Files\CUDA\pentablake</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\polytimos\polytimos.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\skunk\skunk.cu">
+      <Filter>Source Files\CUDA\skunk</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\skunk\cuda_skunk.cu">
+      <Filter>Source Files\CUDA\skunk</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_streebog.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\tribus\tribus.cu">
+      <Filter>Source Files\CUDA\tribus</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_echo512_final.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <ClInclude Include="algos\stages\cuda_echo512_aes.cuh">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </ClInclude>
+    <CudaCompile Include="algos\x11\phi.cu">
+      <Filter>Source Files\CUDA\x11</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x11\sib.cu">
+      <Filter>Source Files\CUDA\x11</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x11\s3.cu">
+      <Filter>Source Files\CUDA\x11</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x11\timetravel.cu">
+      <Filter>Source Files\CUDA\x11</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x11\bitcore.cu">
+      <Filter>Source Files\CUDA\x11</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x11\veltor.cu">
+      <Filter>Source Files\CUDA\x11</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\blake256\blake256.cu">
+      <Filter>Source Files\CUDA\blake256</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\decred\decred_blake3.cu">
+      <Filter>Source Files\CUDA\decred</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\blake256\vanilla.cu">
+      <Filter>Source Files\CUDA\blake256</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_blake256.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_bmw256.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_cubehash256.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_fugue256.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_groestl256.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\keccak\keccak256.cu">
+      <Filter>Source Files\CUDA\keccak</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\keccak\cuda_keccak256.cu">
+      <Filter>Source Files\CUDA\keccak</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\keccak\cuda_keccak_selftest.cu">
+      <Filter>Source Files\CUDA\keccak</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_skein256.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\zr5\zr5.cu">
+      <Filter>Source Files\CUDA\zr5</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\skein\skein.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\skein\cuda_skein.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\scrypt\blake.cu">
+      <Filter>Source Files\CUDA\scrypt</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\scrypt\keccak.cu">
+      <Filter>Source Files\CUDA\scrypt</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\scrypt\salsa_kernel.cu">
+      <Filter>Source Files\CUDA\scrypt</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\scrypt\nv_kernel2.cu">
+      <Filter>Source Files\CUDA\scrypt</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\scrypt\titan_kernel.cu">
+      <Filter>Source Files\CUDA\scrypt</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\scrypt\sha256.cu">
+      <Filter>Source Files\CUDA\scrypt</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\neoscrypt\cuda_neoscrypt.cu">
+      <Filter>Source Files\neoscrypt</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\bmw\bmw.cu">
+      <Filter>Source Files\CUDA\bmw</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\bmw\bmw512.cu">
+      <Filter>Source Files\CUDA\bmw</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_bmw.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_lyra2.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_lyra2v2.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\lyra2\cuda_lyra2_selftest.cu">
+      <Filter>Source Files\CUDA\lyra2</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\lyra2\lyra2RE.cu">
+      <Filter>Source Files\CUDA\lyra2</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\lyra2\cuda_lyra2v2_selftest.cu">
+      <Filter>Source Files\CUDA\lyra2</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\lyra2\lyra2REv2.cu">
+      <Filter>Source Files\CUDA\lyra2</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_lyra2Z.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\lyra2\cuda_lyra2Z_selftest.cu">
+      <Filter>Source Files\CUDA\lyra2</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\lyra2\lyra2Z.cu">
+      <Filter>Source Files\CUDA\lyra2</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\lyra2\lyra2Z330.cu">
+      <Filter>Source Files\CUDA\lyra2</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_lyra2Z330.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\blake2s\blake2s.cu">
+      <Filter>Source Files\CUDA\blake2s</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\blake2s\cuda_blake2s_selftest.cu">
+      <Filter>Source Files\CUDA\blake2s</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\blake256\cuda_blake256_selftest.cu">
+      <Filter>Source Files\CUDA\blake256</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\lbry\cuda_lbry_merged.cu">
+      <Filter>Source Files\CUDA\lbry</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\lbry\lbry.cu">
+      <Filter>Source Files\CUDA\lbry</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\sha256d\cuda_sha256d.cu">
+      <Filter>Source Files\CUDA\sha256</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\sha256d\cuda_sha256_selftest.cu">
+      <Filter>Source Files\CUDA\sha256</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\sha256d\sha256d.cu">
+      <Filter>Source Files\CUDA\sha256</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\sha256d\cuda_sha256t.cu">
+      <Filter>Source Files\CUDA\sha256</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\sha256d\sha256t.cu">
+      <Filter>Source Files\CUDA\sha256</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\sha256dv\sha256dv.cu">
+      <Filter>Source Files\CUDA\sha256</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\sha512256d\sha512256d.cu">
+      <Filter>Source Files\CUDA\sha256</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\sha512256d\cuda_sha512256d.cu">
+      <Filter>Source Files\CUDA\sha256</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\sha512256d\cuda_sha512256d_selftest.cu">
+      <Filter>Source Files\CUDA\sha256</Filter>
+    </CudaCompile>
+    <CudaCompile Include="cuda\xfamily_selftest.cu">
+      <Filter>Source Files\CUDA\quark</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\sia\sia.cu">
+      <Filter>Source Files\sia</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\cryptonight\cryptolight.cu">
+      <Filter>Source Files\CUDA\xmr</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\cryptonight\cryptolight-core.cu">
+      <Filter>Source Files\CUDA\xmr</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\cryptonight\cryptonight.cu">
+      <Filter>Source Files\CUDA\xmr</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\cryptonight\cryptonight-core.cu">
+      <Filter>Source Files\CUDA\xmr</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\cryptonight\cryptonight-extra.cu">
+      <Filter>Source Files\CUDA\xmr</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\cryptonight\wildkeccak.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\allium\allium.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_echo512_80.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_echo512_64.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_fugue512_80.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_shabal512_80.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_simd512_80.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x16\x16r.cu">
+      <Filter>Source Files\CUDA\x16</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x16\x16rt.cu">
+      <Filter>Source Files\CUDA\x16</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\common\cuda_x_fused.cu">
+      <Filter>Source Files\CUDA\common</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x16\x16rv2.cu">
+      <Filter>Source Files\CUDA\x16</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x16\x16s.cu">
+      <Filter>Source Files\CUDA\x16</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x21\x21s.cu">
+      <Filter>Source Files\CUDA\x21</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x25x\x25x.cu">
+      <Filter>Source Files\CUDA\x25x</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x25x\cuda_x25x_panama.cu">
+      <Filter>Source Files\CUDA\x25x</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x25x\cuda_x25x_lane.cu">
+      <Filter>Source Files\CUDA\x25x</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x25x\cuda_x25x_blake2s.cu">
+      <Filter>Source Files\CUDA\x25x</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x25x\cuda_x25x_shuffle.cu">
+      <Filter>Source Files\CUDA\x25x</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\x25x\cuda_x25x_swifftx.cu">
+      <Filter>Source Files\CUDA\x25x</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_sha256_2.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_tiger192.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos/heavyhash/heavyhash.cu" />
+    <CudaCompile Include="algos/heavyhash/cuda_heavyhash.cu" />
+    <CudaCompile Include="algos\sha3d\sha3d.cu">
+      <Filter>Source Files\CUDA\keccak</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\sha3d\cuda_sha3d.cu">
+      <Filter>Source Files\CUDA\keccak</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\sha3t\sha3t.cu">
+      <Filter>Source Files\CUDA\keccak</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\sha3t\cuda_sha3t.cu">
+      <Filter>Source Files\CUDA\keccak</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\equihash\cuda_equi.cu">
+      <Filter>Source Files\equihash</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\equihash\cuda_equi24b.cu">
+      <Filter>Source Files\equihash</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\equihash\cuda_equi24b_192.cu">
+      <Filter>Source Files\equihash</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\gost\cuda_gosthash.cu" />
+    <CudaCompile Include="algos\gost\gost.cu" />
+    <CudaCompile Include="algos\stages\cuda_shavite512_80.cu">
+      <Filter>Source Files\CUDA\stages</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\yescrypt\yescrypt.cu">
+      <Filter>Source Files\CUDA\yescrypt</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\yescrypt\cuda_yescrypt.cu">
+      <Filter>Source Files\CUDA\yescrypt</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\sha256d\cuda_sha256csm.cu">
+      <Filter>Source Files\CUDA\sha256</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\sha256d\sha256csm.cu">
+      <Filter>Source Files\CUDA\sha256</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\argon2d\argon2d.cu" />
+    <CudaCompile Include="algos\argon2d\argon2d_fill.cu" />
+    <CudaCompile Include="algos\argon2d\blake2b_kernels.cu" />
+    <CudaCompile Include="algos\blake2b\blake2b.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\blake2b\cuda_blake2b_selftest.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\balloon\cuda_balloon.cu">
+      <Filter>Source Files\CUDA\balloon</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\rinhash\rinhash_coop.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\kawpow\cuda_kawpow.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\curvehash\curvehash.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\bc3hash\bc3hash.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\pearlhash\pearlhash.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\verthash\verthash.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\verthash\cuda_verthash.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\hoohash\cuda_hoohashv110.cu">
+      <Filter>Source Files\CUDA\hoohash</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\hoohash\hoohash.cu">
+      <Filter>Source Files\CUDA\hoohash</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\odocrypt\cuda_odocrypt.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\evohash\evohash.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\ghostrider\ghostrider.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\mike\mike.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\flex\flex.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\minotaurx\minotaurx.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\homescrypt\homescrypt.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\verus\verus.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CudaCompile Include="algos\yespower\yespower.cu">
+      <Filter>Source Files\CUDA\yespower</Filter>
+    </CudaCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="res\ccminer.ico">
+      <Filter>Ressources</Filter>
+    </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="res\ccminer.rc">
+      <Filter>Ressources</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="README.txt">
+      <Filter>Ressources</Filter>
+    </Text>
+  </ItemGroup>
+</Project>

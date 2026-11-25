@@ -10,6 +10,8 @@ enum sha_algos {
 	ALGO_ARGON2D16000,
 	ALGO_ARGON2D4096,
 	ALGO_ARGON2D500,
+	ALGO_ARGON2ID1024,
+	ALGO_BALLOON,
 	ALGO_BLAKECOIN,
 	ALGO_BLAKE,
 	ALGO_BLAKE2B,
@@ -24,15 +26,12 @@ enum sha_algos {
 	ALGO_DECRED,
 	ALGO_DMD_GR,
 	ALGO_EQUIHASH,
-	ALGO_EVOHASH,
 	ALGO_FRESH,
 	ALGO_FUGUE256,		/* Fugue256 */
-	ALGO_GHOSTRIDER,
 	ALGO_GOSTCOIN,
 	ALGO_GROESTL,
 	ALGO_HEAVY,		/* Heavycoin hash */
 	ALGO_HMQ1725,
-	ALGO_HOOHASH,
 	ALGO_HSR,
 	ALGO_KECCAK,
 	ALGO_KECCAKC,		/* refreshed Keccak with pool factor 256 */
@@ -55,14 +54,13 @@ enum sha_algos {
 	ALGO_POLYTIMOS,
 	ALGO_QUARK,
 	ALGO_QUBIT,
-	ALGO_RINHASH, 
 	ALGO_SCRYPT,
 	ALGO_SCRYPT_JANE,
 	ALGO_SHA256CSM,
 	ALGO_SHA256D,
 	ALGO_SHA256T,
+	ALGO_SHA256DV,
 	ALGO_SHA3D,
-	ALGO_SHA3T,
 	ALGO_SIA,
 	ALGO_SIB,
 	ALGO_SKEIN,
@@ -75,7 +73,6 @@ enum sha_algos {
 	ALGO_X11EVO,
 	ALGO_0X10,
 	ALGO_X11,
-	ALGO_SOTERG,
 	ALGO_X13,
 	ALGO_X14,
 	ALGO_X15,
@@ -101,12 +98,49 @@ enum sha_algos {
 	ALGO_YESCRYPTR24,
 	ALGO_YESCRYPTR32,
 	ALGO_ZR5,
+	ALGO_RINHASH,
+	ALGO_EVOHASH,
+	ALGO_ODO,
 	ALGO_SKYDOGE,
+	ALGO_HOOHASH,
+	ALGO_GHOSTRIDER,
+	ALGO_SHA3T,
+	ALGO_SHA512256D,
+	ALGO_SOTERG,
+	ALGO_X25X,
+	ALGO_CURVEHASH,
+	ALGO_KAWPOW,
+	ALGO_MEOWPOW,
+	ALGO_EVRPROGPOW,
+	ALGO_FIROPOW,
+	ALGO_MERAKI,
+	ALGO_VERTHASH,
+	ALGO_YESPOWER,
+	ALGO_YESPOWERR16,
+	ALGO_POWER2B,
+	ALGO_YESPOWEREQPAY,
+	ALGO_MIKE,
+	ALGO_FLEX,
+	ALGO_MINOTAURX,
+	ALGO_HOMESCRYPT,
+	ALGO_VERUS,
+	ALGO_BC3HASH,
+	ALGO_PEARLHASH,
 	ALGO_AUTO,
 	ALGO_COUNT
 };
 
 extern volatile enum sha_algos opt_algo;
+
+// ProgPoW-over-ethash family (KawPoW + the MeowPow/EvrProgPow/FiroPoW variants
+// in algos/progpow_multi/). They share the ethproxy/kawpow stratum wire format
+// and the work->kawpow_* job fields, so the stratum/submit/gen_work paths treat
+// them uniformly; only the scanhash dispatch differs per variant.
+static inline int is_progpow_algo(int a)
+{
+	return a == ALGO_KAWPOW || a == ALGO_MEOWPOW || a == ALGO_EVRPROGPOW ||
+	       a == ALGO_FIROPOW || a == ALGO_MERAKI;
+}
 
 static const char *algo_names[] = {
 	"anime",
@@ -114,6 +148,8 @@ static const char *algo_names[] = {
 	"argon2d16000",
 	"argon2d4096",
 	"argon2d500",
+	"argon2id1024",
+	"balloon",
 	"blakecoin",
 	"blake",
 	"blake2b",
@@ -128,15 +164,12 @@ static const char *algo_names[] = {
 	"decred",
 	"dmd-gr",
 	"equihash",
-	"evohash",
 	"fresh",
 	"fugue256",
-	"ghostrider",
 	"gostcoin",
 	"groestl",
 	"heavy",
 	"hmq1725",
-	"hoohash",
 	"hsr",
 	"keccak",
 	"keccakc",
@@ -159,20 +192,17 @@ static const char *algo_names[] = {
 	"polytimos",
 	"quark",
 	"qubit",
-	"rinhash",
 	"scrypt",
 	"scrypt-jane",
 	"sha256csm",
 	"sha256d",
 	"sha256t",
+	"sha256dv",
 	"sha3d",
-	"sha3t",
-	"soterg",
 	"sia",
 	"sib",
 	"skein",
 	"skein2",
-	"skydoge",
 	"skunk",
 	"s3",
 	"timetravel",
@@ -197,7 +227,13 @@ static const char *algo_names[] = {
 	"whirlpoolx",
 	"whirlpoolx2",
 	"wildkeccak",
-	"lyra2re",
+	/* NULL, not "lyra2re": that name ALSO exists in the alias chain below, mapping to
+	 * ALGO_LYRA2 -- but algo_to_int() searches THIS table first and returned the orphan
+	 * ALGO_LYRA2RE, which has no scanhash dispatch, so `-a lyra2re` printed
+	 * "not available in this build" and exited. The lookup already handles NULL
+	 * (`if (algo_names[i] && ...)`), so the slot is skipped and the alias now fires.
+	 * A slot rather than a deletion, so the enum is NOT renumbered. */
+	NULL,
 	"lyra2z330",
 	"yescrypt",
 	"yescryptr8",
@@ -206,6 +242,34 @@ static const char *algo_names[] = {
 	"yescryptr24",
 	"yescryptr32",
 	"zr5",
+	"rinhash",
+	"evohash",
+	"odo",
+	"skydoge",
+	"hoohash",
+	"ghostrider",
+	"sha3t",
+	"sha512256d",
+	"soterg",
+	"x25x",
+	"curvehash",
+	"kawpow",
+	"meowpow",
+	"evrprogpow",
+	"firopow",
+	"meraki",
+	"verthash",
+	"yespower",
+	"yespowerr16",
+	"power2b",
+	"yespowereqpay",
+	"mike",
+	"flex",
+	"minotaurx",
+	"homescrypt",
+	"verus",
+	"bc3hash",
+	"pearlhash",
 	"auto", /* reserved for multi algo */
 	""
 };
@@ -225,6 +289,40 @@ static inline int algo_to_int(char* arg)
 		// some aliases...
 		if (!strcasecmp("all", arg))
 			i = ALGO_AUTO;
+		/* Every wild yespower 1.0 coin is -a yespower with a distinct
+		 * --yespower-key on the r=32 default, so these are aliases, not algos.
+		 * The parameters each one needs live in the table in
+		 * algos/yespower/yespower.cu, which `-a` applies via
+		 * yespower_set_variant(); a name added here and not there aborts at
+		 * startup rather than mining generic parameters. */
+		else if (!strcasecmp("yespower-b2b", arg))
+			i = ALGO_POWER2B;
+		else if (!strcasecmp("yenten", arg))
+			i = ALGO_YESPOWERR16;
+		else if (!strcasecmp("yespowersugar", arg) ||
+		         !strcasecmp("sugarchain", arg) ||
+		         !strcasecmp("yespowerurx", arg) ||
+		         !strcasecmp("yespowerltncg", arg) ||
+		         !strcasecmp("yespowermgpc", arg) ||
+		         !strcasecmp("yespowertide", arg) ||
+		         !strcasecmp("yespowersmt", arg) ||
+		         !strcasecmp("yespowerarwn", arg) ||
+		         !strcasecmp("yespoweradvc", arg) ||
+		         !strcasecmp("yespoweric", arg) ||
+		         !strcasecmp("yespoweriots", arg) ||
+		         !strcasecmp("yespowerlitb", arg) ||
+		         !strcasecmp("cpupower", arg))
+			i = ALGO_YESPOWER;
+		else if (!strcasecmp("hoohashv110", arg))
+			i = ALGO_HOOHASH;
+		else if (!strcasecmp("verushash", arg))
+			i = ALGO_VERUS;
+		else if (!strcasecmp("pepepow", arg))
+			i = ALGO_HOOHASH;
+		else if (!strcasecmp("gr", arg))
+			i = ALGO_GHOSTRIDER;
+		else if (!strcasecmp("sha3-256t", arg))
+			i = ALGO_SHA3T;
 		else if (!strcasecmp("cryptonight-light", arg))
 			i = ALGO_CRYPTOLIGHT;
 		else if (!strcasecmp("cryptonight-lite", arg))
@@ -235,18 +333,14 @@ static inline int algo_to_int(char* arg)
 			i = ALGO_DMD_GR;
 		else if (!strcasecmp("equi", arg))
 			i = ALGO_EQUIHASH;
+		else if (!strcasecmp("equihash144", arg) || !strcasecmp("equihash144_5", arg))
+			i = ALGO_EQUIHASH; // 144/5 variant; the (n,k)+personalization is set in parse_arg 'a'
+		else if (!strcasecmp("equihash192", arg) || !strcasecmp("equihash192_7", arg))
+			i = ALGO_EQUIHASH; // 192/7 variant; (n,k)+personalization set in parse_arg 'a'
 		else if (!strcasecmp("doom", arg))
 			i = ALGO_LUFFA;
 		else if (!strcasecmp("hmq17", arg))
 			i = ALGO_HMQ1725;
-		else if (!strcasecmp("hoohashv110", arg))
-			i = ALGO_HOOHASH;
-		else if (!strcasecmp("pepepow", arg))
-			i = ALGO_HOOHASH;
-		else if (!strcasecmp("hoohash-pepew", arg))
-			i = ALGO_HOOHASH;
-		else if (!strcasecmp("pepepow", arg))
-			i = ALGO_HOOHASH;
 		else if (!strcasecmp("hshare", arg))
 			i = ALGO_HSR;
 		else if (!strcasecmp("lyra2re", arg))
@@ -259,12 +353,8 @@ static inline int algo_to_int(char* arg)
 			i = ALGO_SHA256D;
 		else if (!strcasecmp("sha256", arg))
 			i = ALGO_SHA256D;
-		else if (!strcasecmp("sha3-256t", arg))
-			i = ALGO_SHA3T;
 		else if (!strcasecmp("gostcoin", arg))
 			i = ALGO_GOSTCOIN;
-		else if (!strcasecmp("gr", arg))
-			i = ALGO_GHOSTRIDER;
 		else if (!strcasecmp("thorsriddle", arg))
 			i = ALGO_VELTOR;
 		else if (!strcasecmp("timetravel10", arg))
@@ -275,10 +365,14 @@ static inline int algo_to_int(char* arg)
 			i = ALGO_ZR5;
 		else if (!strcasecmp("neoscrypt-xaya", arg))
 			i = ALGO_XAYA;
-		else if (!strcasecmp("rinhash", arg))
-			i = ALGO_RINHASH;
-		else if (!strcasecmp("equihash144", arg) || !strcasecmp("equihash144_5", arg))
-			i = ALGO_EQUIHASH; // 144/5 variant; the (n,k)+personalization is set in parse_arg 'a'
+		else if (!strcasecmp("odocrypt", arg))
+			i = ALGO_ODO;
+		else if (!strcasecmp("curve", arg))
+			i = ALGO_CURVEHASH;
+		else if (!strcasecmp("bc3", arg))
+			i = ALGO_BC3HASH;
+		else if (!strcasecmp("pearl", arg))
+			i = ALGO_PEARLHASH;
 		else
 			i = -1;
 	}

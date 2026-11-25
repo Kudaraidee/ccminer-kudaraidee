@@ -1,0 +1,847 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{36DC07F9-A4A6-4877-A146-1B960083CF6F}</ProjectGuid>
+    <RootNamespace>ccminer-kudaraidee</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+    <CLRSupport>false</CLRSupport>
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Release'" Label="Configuration">
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'" Label="Configuration">
+    <UseDebugLibraries>true</UseDebugLibraries>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <UseOfMfc>false</UseOfMfc>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <UseOfMfc>false</UseOfMfc>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <UseOfMfc>false</UseOfMfc>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <UseOfMfc>false</UseOfMfc>
+  </PropertyGroup>
+  <!-- CUDA targets. A dev build (msbuild ... -p:DevArch=86) compiles for that one
+       arch only, into its own output dirs, so its objects never reach a release link. -->
+  <PropertyGroup>
+    <CudaArchList Condition="'$(DevArch)'==''">compute_61,sm_61;compute_75,sm_75;compute_86,sm_86</CudaArchList>
+    <CudaArchList Condition="'$(DevArch)'!=''">compute_$(DevArch),sm_$(DevArch)</CudaArchList>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(DevArch)'!=''">
+    <OutDir>$(Platform)\$(Configuration)-sm$(DevArch)\</OutDir>
+    <IntDir>$(Platform)\$(Configuration)-sm$(DevArch)\</IntDir>
+    <TargetName>ccminer-kudaraidee-sm$(DevArch)</TargetName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\CUDA 11.8.props" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <PreprocessorDefinitions>WITH_HEAVY_ALGO;WIN32;_DEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;CURL_STATICLIB;USE_WRAPNVML;SCRYPT_KECCAK512;SCRYPT_CHACHA;SCRYPT_CHOOSE_COMPILETIME;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>.;compat;compat\curl-for-windows\curl\include;compat\jansson;compat\getopt;compat\pthreads;compat\curl-for-windows\openssl\openssl\include;compat\curl-for-windows\zlib;%(AdditionalIncludeDirectories);$(CudaToolkitIncludeDir)</AdditionalIncludeDirectories>
+      <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <OpenMPSupport>true</OpenMPSupport>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Console</SubSystem>
+      <AdditionalDependencies>cudart_static.lib;cuda.lib;nvrtc_static.lib;nvrtc-builtins_static.lib;nvptxcompiler_static.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;pthreadVC2.lib;libcurl.x86.lib;openssl.x86.lib;zlib.x86.lib;ws2_32.lib;Wldap32.lib;nvapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <IgnoreSpecificDefaultLibraries>libcmt.lib;msvcrt.lib</IgnoreSpecificDefaultLibraries>
+      <AdditionalLibraryDirectories>compat\pthreads\x86;compat\curl-for-windows\out\x86\Release\lib;compat\nvapi\x86;%(AdditionalLibraryDirectories);$(CudaToolkitLibDir)</AdditionalLibraryDirectories>
+      <AdditionalOptions>/d1trimfile:$(ProjectDir) /NODEFAULTLIB:LIBCMT %(AdditionalOptions)</AdditionalOptions>
+      <LinkStatus>true</LinkStatus>
+    </Link>
+    <CudaCompile>
+      <CInterleavedPTX>false</CInterleavedPTX>
+      <GenerateLineInfo>true</GenerateLineInfo>
+      <MaxRegCount>80</MaxRegCount>
+      <PtxAsOptionV>true</PtxAsOptionV>
+      <Keep>true</Keep>
+      <CodeGeneration>$(CudaArchList)</CodeGeneration>
+      <Include>$(NVTOOLSEXT_PATH)\include;..\..\..\Common\C99</Include>
+      <AdditionalCompilerOptions>/d1trimfile:$(ProjectDir) %(AdditionalCompilerOptions)</AdditionalCompilerOptions>
+    </CudaCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <PreprocessorDefinitions>WITH_HEAVY_ALGO;WIN32;_DEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;CURL_STATICLIB;USE_WRAPNVML;SCRYPT_KECCAK512;SCRYPT_CHACHA;SCRYPT_CHOOSE_COMPILETIME;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>.;compat;compat\curl-for-windows\curl\include;compat\jansson;compat\getopt;compat\pthreads;compat\curl-for-windows\openssl;compat\curl-for-windows\zlib;%(AdditionalIncludeDirectories);$(CudaToolkitIncludeDir)</AdditionalIncludeDirectories>
+      <StructMemberAlignment>8Bytes</StructMemberAlignment>
+      <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <OpenMPSupport>true</OpenMPSupport>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Console</SubSystem>
+      <AdditionalDependencies>kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;pthreadVC2.lib;libcurl.x64.lib;libcrypto.x64.lib;libssl.x64.lib;zlib.x64.lib;ws2_32.lib;Wldap32.lib;cudart_static.lib;cuda.lib;nvrtc_static.lib;nvrtc-builtins_static.lib;nvptxcompiler_static.lib;nvapi64.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <IgnoreSpecificDefaultLibraries>libcmt.lib</IgnoreSpecificDefaultLibraries>
+      <AdditionalLibraryDirectories>compat\pthreads\x64;compat\curl-for-windows\out\x64\Release\lib;compat\nvapi\amd64;%(AdditionalLibraryDirectories);$(CudaToolkitLibDir)</AdditionalLibraryDirectories>
+      <AdditionalOptions>/d1trimfile:$(ProjectDir) /NODEFAULTLIB:LIBCMTD %(AdditionalOptions)</AdditionalOptions>
+      <LinkStatus>true</LinkStatus>
+    </Link>
+    <CudaCompile>
+      <CInterleavedPTX>false</CInterleavedPTX>
+      <GenerateLineInfo>true</GenerateLineInfo>
+      <MaxRegCount>80</MaxRegCount>
+      <PtxAsOptionV>true</PtxAsOptionV>
+      <Keep>true</Keep>
+      <CodeGeneration>$(CudaArchList)</CodeGeneration>
+      <Include>$(NVTOOLSEXT_PATH)\include;..\..\..\Common\C99</Include>
+      <TargetMachinePlatform>64</TargetMachinePlatform>
+      <AdditionalCompilerOptions>/d1trimfile:$(ProjectDir) %(AdditionalCompilerOptions)</AdditionalCompilerOptions>
+    </CudaCompile>
+    <CudaLink>
+      <PerformDeviceLink>false</PerformDeviceLink>
+    </CudaLink>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+      <CompileAsManaged>false</CompileAsManaged>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>WITH_HEAVY_ALGO;WIN32;NDEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;CURL_STATICLIB;USE_WRAPNVML;SCRYPT_KECCAK512;SCRYPT_CHACHA;SCRYPT_CHOOSE_COMPILETIME;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>.;compat;compat\curl-for-windows\curl\include;compat\jansson;compat\getopt;compat\pthreads;compat\curl-for-windows\openssl\openssl\include;compat\curl-for-windows\zlib;%(AdditionalIncludeDirectories);$(CudaToolkitIncludeDir)</AdditionalIncludeDirectories>
+      <MinimalRebuild>true</MinimalRebuild>
+      <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <OpenMPSupport>true</OpenMPSupport>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <SubSystem>Console</SubSystem>
+      <AdditionalDependencies>cudart_static.lib;cuda.lib;nvrtc_static.lib;nvrtc-builtins_static.lib;nvptxcompiler_static.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;pthreadVC2.lib;libcurl.x86.lib;openssl.x86.lib;zlib.x86.lib;ws2_32.lib;Wldap32.lib;nvapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <IgnoreSpecificDefaultLibraries>libcmt.lib</IgnoreSpecificDefaultLibraries>
+      <AdditionalLibraryDirectories>compat\pthreads\x86;compat\curl-for-windows\out\x86\Release\lib;compat\nvapi\x86;%(AdditionalLibraryDirectories);$(CudaToolkitLibDir)</AdditionalLibraryDirectories>
+      <AdditionalOptions>/d1trimfile:$(ProjectDir) /NODEFAULTLIB:LIBCMT %(AdditionalOptions)</AdditionalOptions>
+      <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
+      <LinkStatus>false</LinkStatus>
+      <LargeAddressAware>true</LargeAddressAware>
+    </Link>
+    <CudaCompile>
+      <CInterleavedPTX>false</CInterleavedPTX>
+      <MaxRegCount>80</MaxRegCount>
+      <PtxAsOptionV>true</PtxAsOptionV>
+      <Keep>true</Keep>
+      <CodeGeneration>$(CudaArchList)</CodeGeneration>
+      <AdditionalOptions>--ptxas-options="-O2" --Wno-deprecated-gpu-targets %(AdditionalOptions)</AdditionalOptions>
+      <Optimization>O2</Optimization>
+      <AdditionalCompilerOptions>/d1trimfile:$(ProjectDir) %(AdditionalCompilerOptions)</AdditionalCompilerOptions>
+    </CudaCompile>
+    <CudaLink>
+      <GPUDebugInfo>false</GPUDebugInfo>
+      <Optimization>O3</Optimization>
+    </CudaLink>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <EnableEnhancedInstructionSet>
+      </EnableEnhancedInstructionSet>
+      <OpenMPSupport>true</OpenMPSupport>
+      <CompileAsManaged>false</CompileAsManaged>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>WITH_HEAVY_ALGO;WIN32;NDEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;CURL_STATICLIB;USE_WRAPNVML;SCRYPT_KECCAK512;SCRYPT_CHACHA;SCRYPT_CHOOSE_COMPILETIME;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>.;compat;compat\curl-for-windows\curl\include;compat\jansson;compat\getopt;compat\pthreads;compat\curl-for-windows\openssl;compat\curl-for-windows\zlib;%(AdditionalIncludeDirectories);$(CudaToolkitIncludeDir)</AdditionalIncludeDirectories>
+      <MinimalRebuild>true</MinimalRebuild>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <SubSystem>Console</SubSystem>
+      <AdditionalDependencies>kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;pthreadVC2.lib;libcurl.x64.lib;libcrypto.x64.lib;libssl.x64.lib;zlib.x64.lib;ws2_32.lib;Wldap32.lib;cudart_static.lib;cuda.lib;nvrtc_static.lib;nvrtc-builtins_static.lib;nvptxcompiler_static.lib;nvapi64.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <IgnoreSpecificDefaultLibraries>libcmt.lib</IgnoreSpecificDefaultLibraries>
+      <AdditionalLibraryDirectories>compat\pthreads\x64;compat\curl-for-windows\out\x64\Release\lib;compat\nvapi\amd64;%(AdditionalLibraryDirectories);$(CudaToolkitLibDir)</AdditionalLibraryDirectories>
+      <AdditionalOptions>/d1trimfile:$(ProjectDir) /NODEFAULTLIB:LIBCMT %(AdditionalOptions)</AdditionalOptions>
+      <LinkStatus>false</LinkStatus>
+      <LargeAddressAware>true</LargeAddressAware>
+    </Link>
+    <CudaCompile>
+      <CInterleavedPTX>false</CInterleavedPTX>
+      <MaxRegCount>128</MaxRegCount>
+      <PtxAsOptionV>true</PtxAsOptionV>
+      <Keep>true</Keep>
+      <CodeGeneration>$(CudaArchList)</CodeGeneration>
+      <Include>$(NVTOOLSEXT_PATH)\include</Include>
+      <Optimization>O3</Optimization>
+      <TargetMachinePlatform>64</TargetMachinePlatform>
+      <AdditionalOptions>-allow-unsupported-compiler --Wno-deprecated-gpu-targets %(AdditionalOptions)</AdditionalOptions>
+      <Defines>WITH_HEAVY_ALGO;_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH</Defines>
+      <AdditionalCompilerOptions>/d1trimfile:$(ProjectDir) %(AdditionalCompilerOptions)</AdditionalCompilerOptions>
+    </CudaCompile>
+    <CudaLink>
+      <Optimization>O3</Optimization>
+      <PerformDeviceLink>false</PerformDeviceLink>
+    </CudaLink>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="algos\argon2d\argon2ref\argon2.c" />
+    <ClCompile Include="algos\argon2d\argon2ref\blake2\blake2b.c" />
+    <ClCompile Include="algos\argon2d\argon2ref\core.c" />
+    <ClCompile Include="algos\argon2d\argon2ref\encoding.c" />
+    <ClCompile Include="algos\argon2d\argon2ref\opt.c" />
+    <ClCompile Include="algos\argon2d\argon2ref\thread.c" />
+    <ClCompile Include="algos\x25x\swifftx.c" />
+    <ClCompile Include="sph\sph_panama.c" />
+    <ClCompile Include="algos\x25x\lane.c" />
+    <ClCompile Include="algos\balloon\balloon.cpp" />
+    <ClCompile Include="algos\balloon\balloon_scan.cpp" />
+    <ClCompile Include="algos\balloon\balloon_selftest.cpp" />
+    <ClCompile Include="algos\rinhash\rinhash_scanhash.cpp" />
+    <ClCompile Include="algos\odocrypt\odocrypt_host.cpp" />
+    <ClCompile Include="algos\odocrypt\odocrypt_jit.cpp" />
+    <ClCompile Include="algos\balloon\sha256-ref.c" />
+    <ClCompile Include="compat\getopt\getopt_long.c" />
+    <ClCompile Include="compat\gettimeofday.c" />
+    <ClCompile Include="compat\jansson\dump.c" />
+    <ClCompile Include="compat\jansson\error.c" />
+    <ClCompile Include="compat\jansson\hashtable.c" />
+    <ClCompile Include="compat\jansson\load.c" />
+    <ClCompile Include="compat\jansson\memory.c" />
+    <ClCompile Include="compat\jansson\pack_unpack.c" />
+    <ClCompile Include="compat\jansson\strbuffer.c" />
+    <ClCompile Include="compat\jansson\strconv.c" />
+    <ClCompile Include="compat\jansson\utf.c" />
+    <ClCompile Include="compat\jansson\value.c" />
+    <ClInclude Include="algos\balloon\balloon.h" />
+    <ClInclude Include="algos\balloon\sha256.h" />
+    <ClInclude Include="cuda\blake512_device.cuh" />
+    <ClInclude Include="cuda\bmw512_device.cuh" />
+    <ClInclude Include="cuda\cubehash512_device.cuh" />
+    <ClInclude Include="cuda\fugue512_device.cuh" />
+    <ClInclude Include="cuda\hamsi512_device.cuh" />
+    <ClInclude Include="cuda\jh512_device.cuh" />
+    <ClInclude Include="cuda\keccak_device.cuh" />
+    <ClInclude Include="cuda\luffa512_device.cuh" />
+    <ClInclude Include="cuda\sha256_device.cuh" />
+    <ClInclude Include="cuda\salsa_device.cuh" />
+    <ClInclude Include="cuda\pwxform_device.cuh" />
+    <ClInclude Include="algos\yespower\yespower_smix.cuh" />
+    <ClInclude Include="algos\yespower\yespower_head_tail.cuh" />
+    <ClInclude Include="algos\yespower\yespower_hash.cuh" />
+    <ClInclude Include="algos\minotaurx\minotaurx.h" />
+    <ClInclude Include="algos\minotaurx\minotaurx_kat.h" />
+    <ClInclude Include="algos\homescrypt\homescrypt.h" />
+    <ClInclude Include="algos\homescrypt\homescrypt_kat.h" />
+    <ClInclude Include="algos\verus\verus_host.h" />
+    <ClInclude Include="algos\verus\verus_portable.h" />
+    <ClInclude Include="algos\verus\verus_warp.cuh" />
+    <ClInclude Include="algos\verus\verus-kat.h" />
+    <ClInclude Include="algos\verus\haraka.h" />
+    <ClInclude Include="algos\verus\haraka_portable.h" />
+    <ClInclude Include="algos\verus\verus_clhash.h" />
+    <ClInclude Include="algos\verus\verus_clhash_iter.h" />
+    <ClInclude Include="algos\verus\verus-simd.h" />
+    <ClInclude Include="algos\verus\verus_host_target.h" />
+    <ClInclude Include="cuda\shabal512_device.cuh" />
+    <ClInclude Include="cuda\sha512_device.cuh" />
+    <ClInclude Include="cuda\skein512_device.cuh" />
+    <ClInclude Include="cuda\selftest_gate.cuh" />
+    <ClInclude Include="compat\pthreads\pthread.h" />
+    <ClCompile Include="compat\winansi.c" />
+    <ClCompile Include="ccminer.cpp">
+      <TreatWChar_tAsBuiltInType>false</TreatWChar_tAsBuiltInType>
+      <Optimization Condition="'$(Configuration)'=='Release'">Full</Optimization>
+    </ClCompile>
+    <ClCompile Include="algos\cryptonight\mman.c" />
+    <ClCompile Include="algos\cryptonight\wildkeccak-cpu.cpp" />
+    <ClCompile Include="algos\cryptonight\xmr-rpc.cpp" />
+    <ClCompile Include="algos\cryptonight\aesb.cpp" />
+    <ClCompile Include="algos\cryptonight\oaes_lib.cpp" />
+    <ClCompile Include="algos\cryptonight\cryptolight-cpu.cpp" />
+    <ClCompile Include="algos\cryptonight\cryptonight-cpu.cpp" />
+    <ClCompile Include="algos\mike\mike_hash.cpp" />
+    <ClCompile Include="algos\flex\flex_hash.cpp" />
+    <ClCompile Include="algos\minotaurx\minotaurx_hash.cpp" />
+    <ClCompile Include="algos\homescrypt\homescrypt_hash.cpp" />
+    <ClCompile Include="algos\verus\haraka.c" />
+    <ClCompile Include="algos\verus\haraka_portable.c" />
+    <ClCompile Include="algos\verus\verus_clhash.c" />
+    <ClCompile Include="algos\verus\verus_host.c" />
+    <ClCompile Include="algos\cryptonight\cpu\c_keccak.c" />
+    <ClCompile Include="algos\equihash\blake2\blake2bx.cpp">
+      <EnableEnhancedInstructionSet Condition="'$(Platform)'=='Win32'">StreamingSIMDExtensions</EnableEnhancedInstructionSet>
+    </ClCompile>
+    <ClCompile Include="algos\equihash\equi-stratum.cpp" />
+    <ClCompile Include="algos\equihash\equi.cpp" />
+    <ClCompile Include="algos\equihash\equi_verify_144.cpp" />
+    <ClCompile Include="algos\equihash\equi_verify_192.cpp" />
+    <ClCompile Include="algos\equihash\equihash.cpp" />
+    <ClCompile Include="algos\curvehash\curvehash_oracle.cpp" />
+    <ClCompile Include="algos\bc3hash\bc3hash_oracle.cpp">
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>algos\bc3hash\ref;algos\bc3hash\ref\include;algos\curvehash\secp256k1\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="algos\verthash\verthash-cpu.c" />
+    <ClCompile Include="algos\verthash\verthash-data.cpp" />
+    <ClCompile Include="algos\curvehash\secp256k1_unity.c">
+      <AdditionalIncludeDirectories>algos\curvehash\secp256k1;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="algos\kawpow\kawpow.cpp" />
+    <ClCompile Include="algos\kawpow\kawpow_core.cpp" />
+    <ClCompile Include="algos\kawpow\ethash\ethash.cpp" />
+    <ClCompile Include="algos\kawpow\ethash\progpow.cpp" />
+    <ClCompile Include="algos\kawpow\ethash\managed.cpp" />
+    <ClCompile Include="algos\kawpow\ethash\primes.c" />
+    <ClCompile Include="algos\kawpow\ethash\keccak.c">
+      <ObjectFileName>$(IntDir)ethash_keccak.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="algos\kawpow\ethash\keccakf1600.c" />
+    <ClCompile Include="algos\kawpow\ethash\keccakf800.c" />
+    <ClCompile Include="algos\progpow_multi\progpow_pp.cpp" />
+    <ClCompile Include="algos\progpow_multi\ppmulti_jit.cpp" />
+    <ClCompile Include="algos\progpow_multi\ppmulti_dag.cpp" />
+    <ClCompile Include="algos\progpow_multi\ppmulti_epoch.cpp" />
+    <ClCompile Include="algos\progpow_multi\ppmulti_core.cpp" />
+    <ClCompile Include="algos\progpow_multi\ppmulti_bridge.cpp" />
+    <ClCompile Include="core\gpu\nvapi.cpp" />
+    <ClCompile Include="core\gpu\nvsettings.cpp" />
+    <ClCompile Include="core\pools.cpp" />
+    <ClCompile Include="sph\sha256_Y.c" />
+    <ClCompile Include="sph\yescrypt-common.c" />
+    <ClCompile Include="sph\yescrypt-opt.c" />
+    <ClCompile Include="sph\yespower_ref.c" />
+    <ClCompile Include="sph\yespower_b2b_ref.c" />
+    <ClCompile Include="sph\hmac_blake2b.c" />
+    <ClCompile Include="core\util.cpp" />
+    <ClCompile Include="core\bench.cpp" />
+    <ClCompile Include="core\bignum.cpp" />
+    <ClInclude Include="compat\bitcoin\bignum.hpp" />
+    <ClCompile Include="algos\fugue\fuguecoin.cpp" />
+    <ClCompile Include="algos\groestlcoin\groestlcoin.cpp" />
+    <ClCompile Include="core\hashlog.cpp" />
+    <ClCompile Include="core\stats.cpp" />
+    <ClCompile Include="core\gpu\nvml.cpp" />
+    <ClCompile Include="core\api\api.cpp" />
+    <ClCompile Include="algos\scrypt\scrypt.cpp" />
+    <ClCompile Include="algos\scrypt\scrypt-jane.cpp" />
+    <ClCompile Include="core\api\api_control.cpp" />
+    <ClCompile Include="core\api\api_metrics.c" />
+    <ClCompile Include="core\api\api_model.cpp" />
+    <ClCompile Include="core\api\api_http.c" />
+    <ClCompile Include="core\api\api_routes.cpp" />
+    <ClCompile Include="core\sysinfos.cpp" />
+    <ClCompile Include="algos\heavy\hefty1.c" />
+    <ClCompile Include="algos\myriadgroestl\myriadgroestl.cpp" />
+    <ClCompile Include="algos\lyra2\Lyra2.c" />
+    <ClCompile Include="algos\lyra2\Sponge.c" />
+    <ClCompile Include="algos\lyra2\Lyra2Z.c" />
+    <ClCompile Include="algos/heavyhash/heavyhash-gate.c" />
+    <ClCompile Include="algos/heavyhash/keccak_tiny.c" />
+    <ClInclude Include="algos\equihash\eqcuda.hpp" />
+    <ClInclude Include="algos\equihash\cuda_equi24b.h" />
+    <ClInclude Include="algos\equihash\equi_verify.h" />
+    <ClInclude Include="algos\equihash\equi_pack.h" />
+    <ClInclude Include="algos\neoscrypt\neoscrypt.h" />
+    <ClCompile Include="algos\neoscrypt\neoscrypt.cpp" />
+    <ClCompile Include="algos\neoscrypt\neoscrypt-cpu.c" />
+    <ClInclude Include="algos\neoscrypt\cuda_vectors.h" />
+    <ClInclude Include="sph\sha256_Y.h" />
+    <ClInclude Include="sph\SHA3api_ref.h" />
+    <ClInclude Include="sph\yescrypt-platform.h" />
+    <ClInclude Include="sph\yescrypt.h" />
+    <ClInclude Include="sph\yespower.h" />
+    <ClInclude Include="algos\common\cuda_x_fused.h" />
+    <ClInclude Include="algos\common\cuda_x_stages.h" />
+    <CudaCompile Include="algos\bmw\bmw.cu" />
+    <CudaCompile Include="algos\bmw\bmw512.cu" />
+    <CudaCompile Include="algos\stages\cuda_bmw.cu">
+      <MaxRegCount>76</MaxRegCount>
+    </CudaCompile>
+    <CudaCompile Include="algos\allium\allium.cu" />
+    <CudaCompile Include="algos\balloon\cuda_balloon.cu" />
+    <CudaCompile Include="algos\rinhash\rinhash_coop.cu" />
+    <CudaCompile Include="algos\curvehash\curvehash.cu" />
+    <CudaCompile Include="algos\bc3hash\bc3hash.cu">
+      <MaxRegCount>255</MaxRegCount>
+    </CudaCompile>
+    <CudaCompile Include="algos\pearlhash\pearlhash.cu" />
+    <CudaCompile Include="algos\verthash\verthash.cu" />
+    <CudaCompile Include="algos\verthash\cuda_verthash.cu" />
+    <CudaCompile Include="algos\kawpow\cuda_kawpow.cu" />
+    <CudaCompile Include="algos\hoohash\cuda_hoohashv110.cu">
+      <FastMath>false</FastMath>
+      <FmadOptimization>false</FmadOptimization>
+      <Defines>_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH</Defines>
+      <AdditionalOptions>--fmad=false --prec-div=true --prec-sqrt=true --ftz=false -allow-unsupported-compiler --Wno-deprecated-gpu-targets %(AdditionalOptions)</AdditionalOptions>
+    </CudaCompile>
+    <CudaCompile Include="algos\hoohash\hoohash.cu" />
+    <CudaCompile Include="algos\evohash\evohash.cu" />
+    <CudaCompile Include="algos\ghostrider\ghostrider.cu" />
+    <CudaCompile Include="algos\mike\mike.cu" />
+    <CudaCompile Include="algos\flex\flex.cu" />
+    <CudaCompile Include="algos\minotaurx\minotaurx.cu" />
+    <CudaCompile Include="algos\verus\verus.cu" />
+    <CudaCompile Include="algos\homescrypt\homescrypt.cu">
+      <FastMath>false</FastMath>
+      <FmadOptimization>false</FmadOptimization>
+      <Defines>_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH</Defines>
+      <AdditionalOptions>--fmad=false --prec-div=true --prec-sqrt=true --ftz=false -allow-unsupported-compiler --Wno-deprecated-gpu-targets %(AdditionalOptions)</AdditionalOptions>
+    </CudaCompile>
+    <CudaCompile Include="algos\odocrypt\cuda_odocrypt.cu" />
+    <CudaCompile Include="algos\blake2b\blake2b.cu" />
+    <CudaCompile Include="algos\blake2b\cuda_blake2b_selftest.cu" />
+    <CudaCompile Include="algos/heavyhash/heavyhash.cu" />
+    <CudaCompile Include="algos/heavyhash/cuda_heavyhash.cu" />
+    <CudaCompile Include="algos\cryptonight\cryptolight.cu" />
+    <CudaCompile Include="algos\cryptonight\cryptolight-core.cu">
+      <MaxRegCount>64</MaxRegCount>
+    </CudaCompile>
+    <CudaCompile Include="algos\cryptonight\cryptonight.cu" />
+    <CudaCompile Include="algos\cryptonight\cryptonight-core.cu">
+      <MaxRegCount>64</MaxRegCount>
+    </CudaCompile>
+    <CudaCompile Include="algos\cryptonight\cryptonight-extra.cu">
+      <MaxRegCount>255</MaxRegCount>
+    </CudaCompile>
+    <ClInclude Include="algos\cryptonight\cn_aes.cuh" />
+    <ClInclude Include="algos\cryptonight\cn_blake.cuh" />
+    <ClInclude Include="algos\cryptonight\cn_groestl.cuh" />
+    <ClInclude Include="algos\cryptonight\cn_jh.cuh" />
+    <ClInclude Include="algos\cryptonight\cn_keccak.cuh" />
+    <ClInclude Include="algos\cryptonight\cn_skein.cuh" />
+    <CudaCompile Include="algos\cryptonight\wildkeccak.cu">
+      <MaxRegCount>128</MaxRegCount>
+    </CudaCompile>
+    <CudaCompile Include="algos\neoscrypt\cuda_neoscrypt.cu">
+      <MaxRegCount>160</MaxRegCount>
+    </CudaCompile>
+    <ClCompile Include="algos\sia\sia-rpc.cpp" />
+    <ClCompile Include="algos\skein\skein2.cpp" />
+    <ClCompile Include="sph\aes_helper.c" />
+    <ClCompile Include="sph\blake.c" />
+    <ClCompile Include="sph\blake2s.c" />
+    <ClCompile Include="sph\bmw.c" />
+    <ClCompile Include="sph\cubehash.c" />
+    <ClCompile Include="sph\echo.c" />
+    <ClCompile Include="sph\fugue.c" />
+    <ClCompile Include="sph\groestl.c" />
+    <ClCompile Include="sph\haval.c" />
+    <ClCompile Include="sph\jh.c" />
+    <ClCompile Include="sph\keccak.c" />
+    <ClCompile Include="sph\sha3d.c" />
+    <ClCompile Include="sph\sha3.c" />
+    <ClCompile Include="sph\luffa.c" />
+    <ClCompile Include="sph\ripemd.c" />
+    <ClCompile Include="sph\sph_sha2.c" />
+    <ClCompile Include="sph\sha2.c" />
+    <ClCompile Include="sph\sha2big.c" />
+    <ClCompile Include="sph\shabal.c" />
+    <ClCompile Include="sph\shavite.c" />
+    <ClCompile Include="sph\simd.c" />
+    <ClCompile Include="sph\skein.c" />
+    <ClCompile Include="sph\streebog.c" />
+    <ClCompile Include="sph\tiger.c" />
+    <ClCompile Include="sph\hamsi.c" />
+    <ClCompile Include="sph\hamsi_helper.c" />
+    <ClCompile Include="sph\whirlpool.c" />
+    <ClCompile Include="algos\hsr\sm3.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="algos\argon2d\argon2ref\argon2.h" />
+    <ClInclude Include="algos\argon2d\argon2ref\core.h" />
+    <ClInclude Include="algos\argon2d\argon2ref\encoding.h" />
+    <ClInclude Include="algos\argon2d\argon2ref\thread.h" />
+    <ClInclude Include="algos\argon2d\argon2ref\blake2\blake2.h" />
+    <ClInclude Include="algos\argon2d\argon2ref\blake2\blake2-impl.h" />
+    <ClInclude Include="algos\argon2d\argon2ref\blake2\blamka-round-opt.h" />
+    <ClInclude Include="algos\argon2d\argon2ref\blake2\blamka-round-ref.h" />
+    <ClInclude Include="algos\argon2d\argon2d_kernel.h" />
+    <ClInclude Include="algos\argon2d\argon2d_blake2b_device.cuh" />
+    <ClInclude Include="algos\argon2d\cudaexception.h" />
+    <ClInclude Include="compat.h" />
+    <ClInclude Include="compat\getopt\getopt.h" />
+    <ClInclude Include="compat\inttypes.h" />
+    <ClInclude Include="compat\jansson\jansson_config.h" />
+    <ClInclude Include="compat\nvapi\nvapi.h" />
+    <ClInclude Include="compat\nvapi\nvapi_ccminer.h" />
+    <ClInclude Include="compat\nvapi\nvapi_lite_common.h" />
+    <ClInclude Include="compat\nvapi\nvapi_lite_d3dext.h" />
+    <ClInclude Include="compat\nvapi\nvapi_lite_salend.h" />
+    <ClInclude Include="compat\nvapi\nvapi_lite_salstart.h" />
+    <ClInclude Include="compat\nvapi\nvapi_lite_sli.h" />
+    <ClInclude Include="compat\nvapi\nvapi_lite_stereo.h" />
+    <ClInclude Include="compat\nvapi\nvapi_lite_surround.h" />
+    <ClInclude Include="compat\stdbool.h" />
+    <ClInclude Include="compat\sys\time.h" />
+    <ClInclude Include="compat\unistd.h" />
+    <ClInclude Include="compat\winansi.h" />
+    <ClInclude Include="compat\ccminer-config.h" />
+    <ClInclude Include="algos\cryptonight\cryptolight.h" />
+    <ClInclude Include="algos\cryptonight\cryptonight.h" />
+    <ClInclude Include="algos\cryptonight\mman.h" />
+    <ClInclude Include="algos\cryptonight\wildkeccak.h" />
+    <ClInclude Include="algos\cryptonight\xmr-rpc.h" />
+    <ClInclude Include="algos\groestlcoin\cuda_groestl.h" />
+    <ClInclude Include="cuda\helper.cuh" />
+    <ClInclude Include="cuda\helper_alexis.cuh" />
+    <ClInclude Include="cuda\vector_uint2x4.cuh" />
+    <ClInclude Include="compat\elist.h" />
+    <ClInclude Include="algos\heavy\heavy.h" />
+    <ClInclude Include="algos\heavy\hefty1.h" />
+    <ClInclude Include="algos.h" />
+    <ClInclude Include="core\api\api_control.h" />
+    <ClInclude Include="core\api\api_metrics.h" />
+    <ClInclude Include="core\api\api_model.h" />
+    <ClInclude Include="core\api\api_http.h" />
+    <ClInclude Include="core\api\api_routes.h" />
+    <ClInclude Include="miner.h" />
+    <ClInclude Include="core\gpu\nvml.h" />
+    <ClInclude Include="res\resource.h" />
+    <ClInclude Include="algos\sia\sia-rpc.h" />
+    <ClInclude Include="algos\scrypt\salsa_kernel.h" />
+    <ClInclude Include="algos\scrypt\nv_kernel2.h" />
+    <ClInclude Include="algos\scrypt\titan_kernel.h" />
+    <ClInclude Include="algos\scrypt\scrypt-jane.h" />
+    <ClInclude Include="sph\blake2b.h" />
+    <ClInclude Include="sph\blake2s.h" />
+    <ClInclude Include="sph\sph_blake.h" />
+    <ClInclude Include="sph\sph_bmw.h" />
+    <ClInclude Include="sph\sph_cubehash.h" />
+    <ClInclude Include="sph\sph_echo.h" />
+    <ClInclude Include="sph\sph_fugue.h" />
+    <ClInclude Include="sph\sph_groestl.h" />
+    <ClInclude Include="sph\sph_haval.h" />
+    <ClInclude Include="sph\sph_jh.h" />
+    <ClInclude Include="sph\sph_keccak.h" />
+    <ClInclude Include="sph\sph_sha3d.h" />
+    <ClInclude Include="sph\sha3.h" />
+    <ClInclude Include="sph\sph_luffa.h" />
+    <ClInclude Include="sph\sph_sha2.h" />
+    <ClInclude Include="sph\sph_shabal.h" />
+    <ClInclude Include="sph\sph_shavite.h" />
+    <ClInclude Include="sph\sph_simd.h" />
+    <ClInclude Include="sph\sph_skein.h" />
+    <ClInclude Include="sph\sph_streebog.h" />
+    <ClInclude Include="sph\sph_tiger.h" />
+    <ClInclude Include="sph\sph_hamsi.h" />
+    <ClInclude Include="sph\sph_types.h" />
+    <ClInclude Include="sph\sph_whirlpool.h" />
+    <ClInclude Include="compat\bitcoin\uint256.h" />
+    <ClInclude Include="algos\lyra2\Lyra2.h" />
+    <ClInclude Include="algos\lyra2\Sponge.h" />
+    <ClInclude Include="algos\lyra2\Lyra2Z.h" />
+    <ClInclude Include="algos/heavyhash/heavyhash-gate.h" />
+    <ClInclude Include="algos/heavyhash/keccak_tiny.h" />
+    <ClInclude Include="cuda\groestl512_x2_device.cuh" />
+    <ClInclude Include="cuda\blake2b_device.cuh" />
+    <ClInclude Include="cuda\lyra2_device.cuh" />
+    <ClInclude Include="cuda\echo512_device.cuh" />
+    <ClInclude Include="cuda\shavite512_device.cuh" />
+    <ClInclude Include="cuda\shavite512_sp_device.cuh" />
+    <ClInclude Include="cuda\whirlpool512_x4_device.cuh" />
+    <ClInclude Include="cuda\tiger192_device.cuh" />
+  </ItemGroup>
+  <ItemGroup>
+    <CudaCompile Include="core\cuda.cpp" />
+    <CudaCompile Include="algos\argon2d\argon2d.cu" />
+    <CudaCompile Include="algos\argon2d\argon2d_fill.cu" />
+    <CudaCompile Include="algos\argon2d\blake2b_kernels.cu" />
+    <CudaCompile Include="algos\groestlcoin\cuda_groestl.cu" />
+    <CudaCompile Include="algos\myriadgroestl\cuda_myriadgroestl.cu" />
+    <CudaCompile Include="algos\scrypt\blake.cu" />
+    <CudaCompile Include="algos\scrypt\keccak.cu" />
+    <CudaCompile Include="algos\scrypt\sha256.cu" />
+    <CudaCompile Include="algos\scrypt\salsa_kernel.cu">
+    </CudaCompile>
+    <CudaCompile Include="algos\scrypt\nv_kernel2.cu" />
+    <CudaCompile Include="algos\scrypt\titan_kernel.cu" />
+    <CudaCompile Include="algos\sha256d\cuda_sha256csm.cu" />
+    <CudaCompile Include="algos\sha256d\cuda_sha256d.cu" />
+    <CudaCompile Include="algos\sha256d\cuda_sha256_selftest.cu" />
+    <CudaCompile Include="algos\sha256d\sha256csm.cu" />
+    <CudaCompile Include="algos\sha256d\sha256d.cu" />
+    <CudaCompile Include="algos\sha256d\cuda_sha256t.cu" />
+    <CudaCompile Include="algos\sha256d\sha256t.cu" />
+    <CudaCompile Include="algos\sha256dv\sha256dv.cu" />
+    <CudaCompile Include="algos\sha512256d\sha512256d.cu" />
+    <CudaCompile Include="algos\sha512256d\cuda_sha512256d.cu" />
+    <CudaCompile Include="algos\sha512256d\cuda_sha512256d_selftest.cu" />
+    <CudaCompile Include="cuda\xfamily_selftest.cu" />
+    <CudaCompile Include="algos\stages\cuda_shavite512.cu" />
+    <CudaCompile Include="algos\yescrypt\cuda_yescrypt.cu" />
+    <CudaCompile Include="algos\yescrypt\yescrypt.cu" />
+    <CudaCompile Include="algos\yespower\yespower.cu" />
+    <CudaCompile Include="algos\zr5\zr5.cu" />
+    <CudaCompile Include="algos\gost\cuda_gosthash.cu" />
+    <CudaCompile Include="algos\gost\gost.cu" />
+    <CudaCompile Include="algos\heavy\cuda_heavy_blake512.cu">
+    </CudaCompile>
+    <CudaCompile Include="algos\heavy\cuda_combine.cu">
+    </CudaCompile>
+    <CudaCompile Include="algos\heavy\cuda_heavy_groestl512.cu">
+    </CudaCompile>
+    <CudaCompile Include="algos\heavy\cuda_hefty1.cu">
+      <MaxRegCount>80</MaxRegCount>
+    </CudaCompile>
+    <CudaCompile Include="algos\heavy\cuda_heavy_keccak512.cu">
+    </CudaCompile>
+    <CudaCompile Include="algos\heavy\cuda_sha256.cu">
+    </CudaCompile>
+    <CudaCompile Include="algos\heavy\heavy.cu">
+    </CudaCompile>
+    <CudaCompile Include="algos\heavy\bastion.cu" />
+    <CudaCompile Include="algos\heavy\cuda_bastion.cu" />
+    <CudaCompile Include="algos\jha\jha.cu" />
+    <CudaCompile Include="algos\jha\jackpot.cu" />
+    <CudaCompile Include="algos\jha\cuda_jha_compactionTest.cu">
+      <AdditionalOptions>-Xptxas "-abi=yes" %(AdditionalOptions)</AdditionalOptions>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_jha_keccak512.cu">
+    </CudaCompile>
+    <CudaCompile Include="algos\blake256\blake256.cu">
+      <MaxRegCount>64</MaxRegCount>
+    </CudaCompile>
+    <CudaCompile Include="algos\blake2s\blake2s.cu" />
+    <CudaCompile Include="algos\blake2s\cuda_blake2s_selftest.cu" />
+    <CudaCompile Include="algos\decred\decred_blake3.cu">
+      <MaxRegCount>128</MaxRegCount>
+    </CudaCompile>
+    <CudaCompile Include="algos\blake256\vanilla.cu" />
+    <CudaCompile Include="algos\blake256\cuda_blake256_selftest.cu" />
+    <CudaCompile Include="algos\keccak\keccak256.cu" />
+    <CudaCompile Include="algos\keccak\cuda_keccak_selftest.cu" />
+    <CudaCompile Include="algos\sha3d\sha3d.cu" />
+    <CudaCompile Include="algos\sha3d\cuda_sha3d.cu" />
+    <CudaCompile Include="algos\sha3t\cuda_sha3t.cu" />
+    <CudaCompile Include="algos\sha3t\sha3t.cu" />
+    <CudaCompile Include="algos\equihash\cuda_equi.cu">
+      <AdditionalOptions> -Xptxas -dlcm=ca -Xptxas -dscm=cs %(AdditionalOptions)</AdditionalOptions>
+      <MaxRegCount>0</MaxRegCount>
+    </CudaCompile>
+    <CudaCompile Include="algos\equihash\cuda_equi24b.cu">
+      <AdditionalOptions> -DEQ_WN=144 -DEQ_WK=5 -Xptxas -dscm=cs %(AdditionalOptions)</AdditionalOptions>
+      <MaxRegCount>0</MaxRegCount>
+    </CudaCompile>
+    <CudaCompile Include="algos\equihash\cuda_equi24b_192.cu">
+      <AdditionalOptions> -DEQ_WN=192 -DEQ_WK=7 -Xptxas -dscm=cs %(AdditionalOptions)</AdditionalOptions>
+      <MaxRegCount>0</MaxRegCount>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_blake256.cu" />
+    <CudaCompile Include="algos\stages\cuda_bmw256.cu" />
+    <CudaCompile Include="algos\stages\cuda_cubehash256.cu" />
+    <CudaCompile Include="algos\stages\cuda_fugue256.cu" />
+    <CudaCompile Include="algos\stages\cuda_groestl256.cu" />
+    <CudaCompile Include="algos\keccak\cuda_keccak256.cu" />
+    <CudaCompile Include="algos\stages\cuda_skein256.cu" />
+    <CudaCompile Include="algos\lbry\cuda_lbry_merged.cu" />
+    <CudaCompile Include="algos\lbry\lbry.cu" />
+    <CudaCompile Include="algos\pentablake\pentablake.cu">
+      <MaxRegCount>80</MaxRegCount>
+      <AdditionalOptions Condition="'$(Configuration)'=='Release'">--ptxas-options="-dlcm=cg" %(AdditionalOptions)</AdditionalOptions>
+      <FastMath>true</FastMath>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_bmw512.cu">
+      <MaxRegCount>128</MaxRegCount>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_jh512.cu">
+      <MaxRegCount>80</MaxRegCount>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_blake512.cu">
+      <MaxRegCount>80</MaxRegCount>
+    </CudaCompile>
+    <CudaCompile Include="algos\common\cuda_checkhash.cu">
+      <CInterleavedPTX>false</CInterleavedPTX>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_quark_compactionTest.cu">
+      <AdditionalOptions Condition="'$(Configuration)'=='Release'">-Xptxas "-abi=yes" %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions Condition="'$(Configuration)'=='Debug'">-Xptxas "-abi=yes" %(AdditionalOptions)</AdditionalOptions>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_groestl512.cu">
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_keccak512.cu">
+      <MaxRegCount>88</MaxRegCount>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_skein512.cu">
+    </CudaCompile>
+    <CudaCompile Include="algos\quark\anime.cu" />
+    <CudaCompile Include="algos\quark\quark.cu" />
+    <CudaCompile Include="algos\quark\nist5.cu" />
+    <CudaCompile Include="algos\qubit\deep.cu" />
+    <CudaCompile Include="algos\qubit\luffa.cu" />
+    <CudaCompile Include="algos\qubit\qubit.cu" />
+    <CudaCompile Include="algos\stages\cuda_luffa512_80.cu" />
+    <CudaCompile Include="algos\lyra2\cuda_lyra2_selftest.cu" />
+    <CudaCompile Include="algos\lyra2\lyra2RE.cu" />
+    <CudaCompile Include="algos\stages\cuda_lyra2.cu" />
+    <CudaCompile Include="algos\lyra2\cuda_lyra2v2_selftest.cu" />
+    <CudaCompile Include="algos\lyra2\lyra2REv2.cu" />
+    <CudaCompile Include="algos\stages\cuda_lyra2v2.cu" />
+    <CudaCompile Include="algos\lyra2\cuda_lyra2Z_selftest.cu" />
+    <CudaCompile Include="algos\lyra2\lyra2Z.cu" />
+    <CudaCompile Include="algos\lyra2\lyra2Z330.cu" />
+    <CudaCompile Include="algos\stages\cuda_lyra2Z330.cu" />
+    <CudaCompile Include="algos\stages\cuda_lyra2Z.cu" />
+    <CudaCompile Include="algos\polytimos\polytimos.cu" />
+    <CudaCompile Include="algos\sia\sia.cu" />
+    <CudaCompile Include="algos\skein\skein.cu">
+      <MaxRegCount>64</MaxRegCount>
+    </CudaCompile>
+    <CudaCompile Include="algos\skein\cuda_skein.cu">
+      <MaxRegCount>48</MaxRegCount>
+    </CudaCompile>
+    <CudaCompile Include="algos\skunk\skunk.cu" />
+    <CudaCompile Include="algos\skunk\cuda_skunk.cu">
+      <MaxRegCount>64</MaxRegCount>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_streebog.cu" />
+    <ClInclude Include="algos\stages\cuda_echo512_aes.cuh" />
+    <CudaCompile Include="algos\stages\cuda_echo512_final.cu" />
+    <CudaCompile Include="algos\tribus\tribus.cu" />
+    <ClInclude Include="cuda\aes_device.cuh" />
+    <ClInclude Include="cuda\aes_sp_device.cuh" />
+    <CudaCompile Include="algos\stages\cuda_cubehash512.cu" />
+    <CudaCompile Include="algos\stages\cuda_cubehash512_80.cu" />
+    <CudaCompile Include="algos\stages\cuda_echo512_compat.cu">
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_luffa512.cu" />
+    <CudaCompile Include="algos\stages\cuda_shavite512_legacy.cu">
+      <MaxRegCount>80</MaxRegCount>
+    </CudaCompile>
+    <ClInclude Include="algos\stages\cuda_simd512_func.cuh" />
+    <CudaCompile Include="algos\stages\cuda_simd512.cu">
+      <MaxRegCount>64</MaxRegCount>
+    </CudaCompile>
+    <CudaCompile Include="algos\x11\c11.cu" />
+    <CudaCompile Include="algos\x11\fresh.cu" />
+    <CudaCompile Include="algos\x11\phi.cu" />
+    <CudaCompile Include="algos\x11\sib.cu" />
+    <CudaCompile Include="algos\x11\s3.cu" />
+    <CudaCompile Include="algos\x11\timetravel.cu" />
+    <CudaCompile Include="algos\x11\bitcore.cu" />
+    <CudaCompile Include="algos\x11\veltor.cu" />
+    <CudaCompile Include="algos\x11\0x10.cu" />
+    <CudaCompile Include="algos\x11\x11.cu" />
+    <CudaCompile Include="algos\x11\x11evo.cu" />
+    <CudaCompile Include="algos\stages\cuda_hamsi512.cu">
+      <MaxRegCount>72</MaxRegCount>
+    </CudaCompile>
+    <CudaCompile Include="algos\stages\cuda_fugue512.cu">
+    </CudaCompile>
+    <CudaCompile Include="algos\x13\x13.cu" />
+    <CudaCompile Include="algos\hsr\cuda_hsr_sm3.cu" />
+    <CudaCompile Include="algos\hsr\hsr.cu" />
+    <CudaCompile Include="algos\x15\x14.cu" />
+    <CudaCompile Include="algos\stages\cuda_shabal512.cu" />
+    <CudaCompile Include="algos\stages\cuda_whirlpool512.cu" />
+    <CudaCompile Include="algos\stages\cuda_whirlpool512_80.cu" />
+    <CudaCompile Include="algos\x15\x15.cu" />
+    <CudaCompile Include="algos\x15\whirlpool.cu" />
+    <CudaCompile Include="algos\x15\whirlpoolx.cu" />
+    <CudaCompile Include="algos\x15\cuda_whirlpoolx.cu" />
+    <CudaCompile Include="algos\whirlpoolx2\whirlpoolx2.cu" />
+    <CudaCompile Include="algos\whirlpoolx2\cuda_whirlpoolx2.cu" />
+    <CudaCompile Include="algos\x16\x16r.cu" />
+    <CudaCompile Include="algos\x16\x16rt.cu" />
+    <CudaCompile Include="algos\common\cuda_x_fused.cu" />
+    <CudaCompile Include="algos\x16\x16rv2.cu" />
+    <CudaCompile Include="algos\x16\x16s.cu" />
+    <CudaCompile Include="algos\stages\cuda_echo512_80.cu" />
+    <CudaCompile Include="algos\stages\cuda_fugue512_80.cu" />
+    <CudaCompile Include="algos\stages\cuda_shabal512_80.cu" />
+    <CudaCompile Include="algos\stages\cuda_shavite512_80.cu" />
+    <CudaCompile Include="algos\stages\cuda_simd512_80.cu" />
+    <CudaCompile Include="algos\stages\cuda_echo512_64.cu" />
+    <CudaCompile Include="algos\x17\hmq1725.cu" />
+    <CudaCompile Include="algos\x17\x17.cu" />
+    <CudaCompile Include="algos\x17\skydoge.cu" />
+    <CudaCompile Include="algos\soterg\soterg.cu" />
+    <CudaCompile Include="algos\stages\cuda_haval256.cu" />
+    <CudaCompile Include="algos\stages\cuda_sha512.cu">
+      <MaxRegCount>80</MaxRegCount>
+    </CudaCompile>
+    <CudaCompile Include="algos\x21\x21s.cu" />
+    <CudaCompile Include="algos\x25x\x25x.cu" />
+    <CudaCompile Include="algos\x25x\cuda_x25x_panama.cu" />
+    <CudaCompile Include="algos\x25x\cuda_x25x_lane.cu" />
+    <CudaCompile Include="algos\x25x\cuda_x25x_blake2s.cu" />
+    <CudaCompile Include="algos\x25x\cuda_x25x_shuffle.cu" />
+    <CudaCompile Include="algos\x25x\cuda_x25x_swifftx.cu" />
+    <CudaCompile Include="algos\stages\cuda_sha256_2.cu" />
+    <CudaCompile Include="algos\stages\cuda_tiger192.cu" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="res\ccminer.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="res\ccminer.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="README.txt" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\CUDA 11.8.targets" />
+  </ImportGroup>
+  <!-- Copy the required dlls -->
+  <Target Name="AfterBuild">
+    <Copy SourceFiles="@(FilesToCopy)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="AfterClean">
+    <Delete Files="@(FilesToCopy->'$(OutDir)%(Filename)%(Extension)')" TreatErrorsAsWarnings="true" />
+  </Target>
+</Project>

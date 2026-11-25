@@ -1,67 +1,17 @@
 
-ccminer-kudaraidee 1.0.0 (March. 2022)     "0x10 ,x21s and sha3d improvements"
+ccminer-kudaraidee 1.4.0   "Hoohash up to 2.9x; equihash 144/5 and 192/7 +16-38%; share-handling fixes"
 ---------------------------------------------------------------
 
-***************************************************************
-If you find this tool useful and like to support its continuous
-          development, then consider a donation.
-
-kudaraidee@github:
-  DOGE  : D5fSxMfZ5tKYSxxQiJPeRoMjYcyHnffBwD
-
-tpruvot@github:
-  BTC  : 1AJdfCpLWPNoAMDfHF1wD5y8VgKSSTHxPo
-  DCR  : DsUCcACGcyP8McNMRXQwbtpDxaVUYLDQDeU
-
-DJM34:
-  BTC donation address: 1NENYmxwZGHsKFmyjTc5WferTn5VTFb7Ze
-
-cbuchner v1.2:
-  LTC donation address: LKS1WDKGED647msBQfLBHV3Ls8sveGncnm
-  BTC donation address: 16hJF5mceSojnTD3ZTUDqdRhDyPJzoRakM
-
-***************************************************************
+Donation addresses and contributor credits are in CREDITS.txt.
 
 >>> Introduction <<<
 
-This is a CUDA accelerated mining application which handle :
+This is a CUDA accelerated mining application for NVIDIA GPUs. It supports a
+large set of proof-of-work algorithms -- see the complete, current list under
+the -a option below (or run "ccminer --help", or see README.md).
 
-Decred (Blake256 14-rounds - 180 bytes)
-HeavyCoin & MjollnirCoin
-FugueCoin
-GroestlCoin & Myriad-Groestl
-Lbry Credits
-JackpotCoin (JHA)
-QuarkCoin family & AnimeCoin
-TalkCoin
-DarkCoin and other X11 coins
-Chaincoin and Flaxscript (C11)
-Saffroncoin blake (256 14-rounds)
-BlakeCoin (256 8-rounds)
-Qubit (Digibyte, ...)
-Luffa (Joincoin)
-Keccak (Maxcoin)
-Pentablake (Blake 512 x5)
-1Coin Triple S
-Neoscrypt (FeatherCoin)
-Revolver (X11evo)
-Scrypt and Scrypt:N
-Scrypt-Jane (Chacha)
-Sibcoin (sib)
-Skein (Skein + SHA)
-Signatum (Skein cubehash fugue Streebog)
-Tribus (JH, keccak, simd)
-Woodcoin (Double Skein)
-Vanilla (Blake256 8-rounds - double sha256)
-Vertcoin Lyra2RE
-Ziftrcoin (ZR5)
-Boolberry (Wild Keccak)
-Monero (Cryptonight)
-Aeon (Cryptonight-lite)
-Zero Dynamics Cash (argon2d1000)
-
-where some of these coins have a VERY NOTABLE nVidia advantage
-over competing AMD (OpenCL Only) implementations.
+Some of these coins have a VERY NOTABLE nVidia advantage over competing AMD
+(OpenCL only) implementations.
 
 We did not take a big effort on improving usability, so please set
 your parameters carefuly.
@@ -77,67 +27,141 @@ This code is based on the pooler cpuminer and inherits
 its command line interface and options.
 
   -a, --algo=ALGO       specify the algorithm to use
-                          0x10 		  use to mine ChainOX
-                          allium      use to mine Garlic
-                          argon2d1000 use to mine Zero Dynamics Cash                          
-                          bastion     use to mine Joincoin
-                          bitcore     use to mine Bitcore's Timetravel10
-                          blake       use to mine Saffroncoin (Blake256)
-                          blakecoin   use to mine Old Blake 256
-                          blake2s     use to mine Nevacoin (Blake2-S 256)
-                          bmw         use to mine Midnight
-                          cryptolight use to mine AEON cryptonight (MEM/2)
-                          cryptonight use to mine XMR cryptonight, Bytecoin, Dash, DigitalNote, etc
-                          c11/flax    use to mine Chaincoin and Flax
-                          decred      use to mine Decred 180 bytes Blake256-14
-                          deep        use to mine Deepcoin
-                          dmd-gr      use to mine Diamond-Groestl
-                          equihash    use to mine ZEC, HUSH and KMD
-                          fresh       use to mine Freshcoin
-                          fugue256    use to mine Fuguecoin
-                          groestl     use to mine Groestlcoin
-                          hsr         use to mine Hshare
-                          jackpot     use to mine Sweepcoin
-                          keccak      use to mine Maxcoin
-                          keccakc     use to mine CreativeCoin
-                          lbry        use to mine LBRY Credits
-                          luffa       use to mine Joincoin
-                          lyra2       use to mine CryptoCoin
-                          lyra2v2     use to mine Vertcoin
-                          lyra2z      use to mine Zerocoin (XZC)
-                          myr-gr      use to mine Myriad-Groest
-                          neoscrypt   use to mine FeatherCoin, Trezarcoin, Orbitcoin, etc
-						  neoscrypt-xaya use to mine XAYA
-                          nist5       use to mine TalkCoin
-                          penta       use to mine Joincoin / Pentablake
-                          phi         use to mine LUXCoin
-                          polytimos   use to mine Polytimos
-                          quark       use to mine Quarkcoin
-                          qubit       use to mine Qubit
-                          scrypt      use to mine Scrypt coins (Litecoin, Dogecoin, etc)
-                          scrypt:N    use to mine Scrypt-N (:10 for 2048 iterations)
-                          scrypt-jane use to mine Chacha coins like Cache and Ultracoin
-                          s3          use to mine 1coin (ONE)
-                          sha256t     use to mine OneCoin (OC)
-                          sha3d       use to mine BSHA3, Yilacoin and Kylacoin
-                          sia         use to mine SIA
-                          sib         use to mine Sibcoin
-                          skein       use to mine Skeincoin
-                          skein2      use to mine Woodcoin
-                          skunk       use to mine Signatum
-                          timetravel  use to mine MachineCoin
-                          tribus      use to mine Denarius
-                          x11evo      use to mine Revolver
-                          x11         use to mine DarkCoin
-                          x14         use to mine X14Coin
-                          x15         use to mine Halcyon
-                          x17         use to mine X17
-                          x21s        use to mine X21S
-                          vanilla     use to mine Vanilla (Blake256)
-                          veltor      use to mine VeltorCoin
-                          whirlpool   use to mine Joincoin
-                          wildkeccak  use to mine Boolberry (Stratum only)
-                          zr5         use to mine ZiftrCoin
+                          0x10                ChainOX
+                          allium              Blake/Keccak/Lyra2/CubeHash/Skein/Groestl (Garlicoin)
+                          anime               Animecoin
+                          argon2d500          Dynamic (DYN)
+                          argon2d1000         Zero Dynamics Cash
+                          argon2d4096         Argentum / Myriad (XMY)
+                          argon2d16000        Alterdot (ADOT)
+                          argon2id1024        Bitweb (BTW)
+                          balloon             Balloon hash
+                          bastion             Hefty bastion
+                          bc3hash / bc3       BC3Hash (Bitcoin III, from block 64360)
+                          bitcore             Timetravel-10
+                          blake               Blake-256 (SFR)
+                          blake2b             Blake2-B 512 (BCX)
+                          blake2s             Blake2-S 256 (NEVA)
+                          blakecoin           Fast Blake-256 (8 rounds)
+                          bmw                 BMW-256
+                          bmw512              BMW-512
+                          c11 / flax          X11 variant
+                          cryptolight         AEON CryptoNight (MEM/2)
+                          cryptonight         Monero-style CryptoNight
+                          cpupower            CPUchain (CPU), a yespower preset
+                          curvehash           CurvehashCoin (secp256k1 EC)
+                          decred              Decred BLAKE3 (DCP-0011)
+                          deep                Deepcoin
+                          dmd-gr              Diamond-Groestl
+                          equihash / equi     Equihash 200/9 (Zcash)
+                          equihash144         Equihash 144/5 (alias equihash144_5)
+                          equihash192         Equihash 192/7 (alias equihash192_7)
+                          evohash             EvoAI
+                          evrprogpow          EvrProgPow (Evrmore)
+                          firopow             FiroPoW (Firo, StakeCube)
+                          flex                Flex (Kylacoin, Lyncoin)
+                          fresh               Freshcoin (Shavite-80)
+                          fugue256            Fuguecoin
+                          ghostrider / gr     GhostRider (Raptoreum)
+                          gostcoin            Double GOST R 34.11
+                          groestl             Groestlcoin
+                          heavy               Heavycoin (build-gated WITH_HEAVY_ALGO)
+                          heavyhash           HeavyHash (oBTC)
+                          hmq1725 / hmq17     HMQ1725 (Doubloons / Espers)
+                          homescrypt          HomeScrypt v1.2 (Lumenite)
+                          hoohash / pepepow   HoohashV110 (PEPEPOW)
+                          hsr / hshare        HShare / HSR (X13 + SM3)
+                          jackpot             JHA v8
+                          jha                 JHA
+                          kawpow              KawPoW (Ravencoin)
+                          keccak              Keccak-256 (deprecated)
+                          keccakc             Keccak-256 (CreativeCoin)
+                          lbry                LBRY Credits (SHA/RIPEMD)
+                          luffa / doom        Joincoin
+                          lyra2 / lyra2re     Lyra2RE (CryptoCoin)
+                          lyra2v2             Lyra2REv2 (VertCoin)
+                          lyra2z              Lyra2Z (ZeroCoin)
+                          lyra2z330           Lyra2Z330
+                          meowpow             MeowPow (Meowcoin)
+                          meraki              Meraki (Telestai)
+                          mike                Mike (VKAX, FortuneBlock)
+                          minotaurx           MinotaurX (Avian, Pulsar)
+                          mjollnir            Mjollnir (Hefty hash)
+                          myr-gr              Myriad-Groestl
+                          neoscrypt           NeoScrypt (FeatherCoin, Phoenix, UFO...)
+                          xaya                NeoScrypt (XAYA variant)
+                          nist5               NIST5 (TalkCoin)
+                          odo / odocrypt      Odocrypt (DigiByte)
+                          pearlhash / pearl   Pearl (PRL), noisy int8 GEMM (rate in MAC/s)
+                          penta               Pentablake (5x Blake-512)
+                          phi / phi1612       PHI1612 (BHCoin)
+                          polytimos           Polytimos
+                          power2b             yespower-b2b (MicroBitcoin)
+                          quark               Quark
+                          qubit               Qubit
+                          rinhash             RinHash (Blake3 + Argon2d + SHA3-256)
+                          s3                  S3 (1Coin)
+                          scrypt              Scrypt (Litecoin, Dogecoin, ...)
+                          scrypt-jane         Scrypt-Jane (ChaCha)
+                          sha256csm           SHA256csm (Galleoncoin)
+                          sha256d             SHA256d (Bitcoin)
+                          sha256dv            SHA256d (Veil)
+                          sha256t             SHA256 x3
+                          sha3d               BSHA3 (Yilacoin, Kylacoin)
+                          sha3t               SHA3-256T (Fjarcode, Bitcoin III before block 64360)
+                          sha512256d          Double SHA-512/256 (Radiant)
+                          sia                 SIA (Blake2B)
+                          sib                 Sibcoin (X11 + Streebog)
+                          skein               Skein-SHA2 (Skeincoin)
+                          skein2              Double Skein (Woodcoin)
+                          skunk               Skein-Cube-Fugue-Streebog
+                          sugarchain          alias of yespowersugar
+                          skydoge             SkyDoge
+                          soterg              Soteria (X12R core-rotation)
+                          timetravel          Timetravel (Machinecoin, permuted x8)
+                          tribus              Tribus (Denarius)
+                          vanilla             Blake256-8 (VNL)
+                          veltor              Veltor (Thorsriddle + Streebog)
+                          verthash            Verthash (Vertcoin)
+                          verus / verushash   VerusHash 2.2 (Verus, PBaaS)
+                          whirlcoin           Old Whirlcoin (Whirlpool)
+                          whirlpool           Whirlpool
+                          whirlpoolx          WhirlpoolX
+                          whirlpoolx2         WhirlpoolX2 (CapStash)
+                          wildkeccak          Boolberry (Stratum only)
+                          x11                 X11 (DarkCoin)
+                          x11evo              Permuted X11 (Revolver)
+                          x13                 X13 (MaruCoin)
+                          x14                 X14
+                          x15                 X15
+                          x16r                X16R (Ravencoin)
+                          x16rt               X16RT (Veil)
+                          x16rv2              X16Rv2
+                          x16s                X16S (Pigeoncoin)
+                          x17                 X17
+                          x21s                X21S
+                          x25x                X25X (SUQA/SIN)
+                          yescrypt            Globalboost-Y (BSTY) or custom --yescrypt-param
+                          yescryptr8          BitZeny (ZNY)
+                          yescryptr16         yescrypt r=16 (Yenten before yespowerr16)
+                          yescryptr16v2       PPTP
+                          yescryptr24         JagariCoinR
+                          yescryptr32         WAVI
+                          yespower            yespower 1.0, generic (r=32)
+                          yespowerr16         Yenten (YTN), yespower r=16
+                          yespoweradvc        AdventureCoin (ADVC)
+                          yespowerarwn        Arowana (ARWN)
+                          yespowereqpay       EqPay (Qtum-style 181-byte header)
+                          yespoweric          IsotopeC
+                          yespoweriots        IOTS
+                          yespowerlitb        LightBit (LITB)
+                          yespowerltncg       LightningCash-Gold
+                          yespowermgpc        MagpieCoin (MGPC)
+                          yespowersmt         Smartiecoin (SMT)
+                          yespowersugar       Sugarchain (SUGAR)
+                          yespowertide        Tidecoin (TDC)
+                          yespowerurx         UraniumX (URX)
+                          zr5 / ziftr         ZR5 (ZiftrCoin)
 
   -d, --devices         gives a comma separated list of CUDA device IDs
                         to operate on. Device IDs start counting from 0!
@@ -177,6 +201,13 @@ its command line interface and options.
   -b, --api-bind=port   IP:port for the miner API (default: 127.0.0.1:4068), 0 disabled
       --api-remote      Allow remote control, like pool switching, imply --api-allow=0/0
       --api-allow=...   IP/mask of the allowed api client(s), 0/0 for all
+      --api-mode=MODE   API protocol: binary (default), http, or both
+      --api-token=TOK   require 'Authorization: Bearer TOK' on every HTTP route
+      --api-cors=ORIG   value for Access-Control-Allow-Origin, enables OPTIONS
+      --api-http-port=P serve HTTP on its own port instead of sniffing one port
+      --api-control     Allow the API to pause/resume/stop mining at runtime
+      --api-control-min-interval=N  Seconds between accepted state changes (default: 15)
+      --api-control-park-timeout=N  Milliseconds to wait for threads to idle (default: 30000)
       --max-temp=N      Only mine if gpu temp is less than specified value
       --max-rate=N[KMG] Only mine if net hashrate is less than specified value
       --max-diff=N      Only mine if net difficulty is less than specified value
@@ -216,7 +247,7 @@ CryptoNight specific options:
   -l, --launch-config   gives the launch configuration for each kernel
                         in a comma separated list, one per device.
       --bfactor=[0-12]  Run Cryptonight core kernel in smaller pieces,
-                        From 0 (ui freeze) to 12 (smooth), win default is 11
+                        From 0 (ui freeze) to 12 (smooth), win default is 6
                         This is a per-device setting like the launch config.
 
 Wildkeccak specific:
@@ -227,8 +258,6 @@ Wildkeccak specific:
 
 >>> Examples <<<
 
-Example for Cash Mining on mininpatriot.com with a single gpu in your system
-    ccminer -a argon2d1000 -o stratum+tcp://mine.evepool.pw:8132 -u walletaddress.username -p x
 
 Example for Heavycoin Mining on heavycoinpool.com with a single gpu in your system
     ccminer -t 1 -a heavy -o stratum+tcp://stratum01.heavycoinpool.com:5333 -u <<username.worker>> -p <<workerpassword>> -v 8
@@ -278,17 +307,338 @@ Default API feature is only enabled for localhost queries by default, on port 40
 You can test this api on linux with "telnet <miner-ip> 4068" and type "help" to list the commands.
 Default api format is delimited text. If required a php json wrapper is present in api/ folder.
 
-I plan to add a json format later, if requests are formatted in json too..
+An HTTP/JSON REST API is available as well: --api-mode http (or both) serves
+status, Prometheus metrics and /health, and with --api-control also pool,
+algorithm and pause/resume control. See docs/api-rest.md.
 
 
 >>> Additional Notes <<<
 
-This code should be running on nVidia GPUs ranging from compute capability
-3.0 up to compute capability 5.2. Support for Compute 2.0 has been dropped
-so we can more efficiently implement new algorithms using the latest hardware
-features.
+This fork targets modern NVIDIA hardware and CUDA 11.8 only. It builds with the
+CUDA 11.8 Toolkit (Visual Studio 2022 on Windows, project file ccminer-kudaraidee.vcxproj)
+and runs on GPUs of compute capability 6.1 and newer -- Pascal (sm_61, the
+GTX 10-series), Turing (sm_75) and Ampere (sm_86). The default build ships
+native SASS for sm_61/75/86 plus a compute_86 PTX fallback for later cards.
+
+Support for Maxwell (sm_50/52), Kepler and Fermi has been dropped, along with
+all architecture-specific code paths below sm_61, so we can implement and
+optimise new algorithms for the latest hardware without carrying legacy
+fallbacks.
+
+If you have a pre-Pascal GPU (Maxwell/Kepler/Fermi) or need an older CUDA
+Toolkit, use the upstream project instead -- it retains that wider hardware and
+toolkit range: https://github.com/tpruvot/ccminer
 
 >>> RELEASE HISTORY <<<
+  Nov. 23rd 2026 ccminer-tpfuemp 2026.11.1
+
+                  Speed
+                    hoohash    RTX 3060 ~464 -> ~1350 kH/s, GTX 1080 Ti
+                               ~1130 -> ~2760 kH/s
+                    equihash   144/5: GTX 1080 Ti 61 -> 81, RTX 3060 39 -> 54
+                               Sol/s; 192/7: 37 -> 43 and 25 -> 30 Sol/s
+
+                  Fixes
+                    hoohash    every share is re-checked on the CPU with the
+                               node's reference code before submit
+                    equihash   144/5 and 192/7: on multi-GPU rigs every solver
+                               ran on GPU 0; shares lost after a pause, an
+                               algo switch or a pool personalization change
+                    rinhash    multi-GPU rigs shared one GPU buffer; a second
+                               valid nonce in a launch was lost
+                    bc3hash    duplicate share submits ("already sent")
+                    verthash   every hash of a job was wrong when the header
+                               version's low byte was 0xf8 or higher
+                    yescrypt   variants: up to 31 nonces at the end of a range
+                               were lost
+                    timetravel wrong hash order for a GPU still on the old job
+                               (multi-GPU)
+                    x16r, x16rt, x16rv2, x16s, x17, hmq1725, skydoge, x21s,
+                    soterg, whirlpoolx2, anime, heavyhash: a candidate that
+                    failed the CPU check skipped the rest of the launch, and
+                    half of these faults were not logged
+
+  Nov. 13th 2026 ccminer-tpfuemp 2026.11
+
+                  New algorithms
+                    pearlhash        Pearl (PRL), noisy int8 GEMM (alias
+                                     pearl): dp4a kernel on sm_61+, IMMA on
+                                     sm_80+; rate in int8 MAC/s, about
+                                     37 T on an RTX 3060, 17-18 T on a
+                                     GTX 1080 Ti
+
+                  Speed
+                    equihash   144/5 and 192/7: about 3x on a GTX 1080 Ti
+                               (144/5 ~20 -> ~60 Sol/s) and 1.8x on an
+                               RTX 3060; GPU memory 3.75 GB (144/5) and
+                               5.97 GB (192/7), was 4.28 / 6.50 GB; no more
+                               "solutions are being LOST" warnings on 192/7
+                    bc3hash    +27% on an RTX 3060, +6% on a GTX 1080 Ti;
+                               one CPU core per GPU no longer spins
+                               (--cuda-schedule overrides)
+                    curvehash  RTX 3060 4.0 -> ~7.6 MH/s, GTX 1080 Ti
+                               ~1.3 -> ~3.1 MH/s
+                    qubit, deep, luffa: single-kernel SIMD, fused
+                               cubehash+shavite, faster luffa-80
+                    fugue256   faster kernels
+                    yespower   no re-hash of the rest of a batch after a find
+
+                  Fixes
+                    fugue256   submitted a stale nonce
+                    x11 family, quark, x16, x17 and others: the second GPU
+                    nonce was not checked against the target before submit
+                    lbry, skunk, veltor, sia, quark, anime: second nonce check
+                    blake2s, decred: every candidate is checked; more than
+                    two valid candidates were partly lost
+                    whirlpool, whirlcoin: second nonce reported; no batch
+                    skipped after a find
+                    blake256, blake2s, decred, cryptonight: a scan now runs
+                    up to the requested end of the range
+                    equihash   --time-limit and the share limit are honoured
+                               on a quiet pool
+                    yescrypt   variants no longer share the first client key
+                    lyra2, lyra2v2: partial last warp handled correctly
+                    neoscrypt  memory leak per scan call
+                    multi-GPU: the CUDA sleep table was shared without a lock
+
+                  Verification
+                    fail-closed self-tests at startup for flex, fugue256,
+                    fugue512-80, luffa-80 and pearlhash; gr and mike
+                    re-hash sampled lanes on the CPU (GR_VERIFY / MIKE_VERIFY)
+
+                  Build
+                    msbuild -p:DevArch=86, build.cmd 86, build.sh 86: one-arch
+                    developer build; source tree reorganised (cuda/, core/)
+
+  Oct. 17th 2026 ccminer-tpfuemp 2026.10-p2 (patch, binaries added to the 2026.10 release)
+
+                  Fixes
+                    bc3hash    too low rate on large GPUs at a very low pool
+                               difficulty and in --benchmark
+
+                  Logging
+                    CUDA errors name the GPU even when several fail at once;
+                    startup lists GPUs with a display watchdog
+
+  Oct. 17th 2026 ccminer-tpfuemp 2026.10-p1 (patch, binaries added to the 2026.10 release)
+
+                  Logging
+                    CUDA errors that stop the miner now name the GPU and its PCI
+                    bus id ("GPU #n (PCI 0000:01:00.0): Cuda error ..."), which
+                    matches the NVIDIA driver's Xid lines in the kernel log
+
+                  Speed
+                    bc3hash    GTX 10-series cards with less than 3.9 GB free
+                               (16-bit curve tables): +4% (measured on a
+                               GTX 1080 Ti forced to 16-bit tables)
+
+  Oct. 16th 2026 ccminer-tpfuemp 2026.10
+
+                  New algorithms
+                    bc3hash          BC3Hash (Bitcoin III, from block 64360):
+                                     about 360 kH/s on an RTX 3060, 127 kH/s
+                                     on a GTX 1080 Ti; curve tables use 3 GB
+                                     of GPU memory when available (256 MB
+                                     otherwise)
+
+                  Speed
+                    blake256   3-input adds on the IMAD pipe (sm_80+): blake,
+                               blakecoin, vanilla +18-20% (RTX 3060); blake2s
+                               +5%; GTX 10-series now defaults to -i 30 on
+                               Windows too
+                    balloon    register-resident kernel: about 4x on a GTX
+                               1080 Ti; default batch sized to the GPU
+                    bmw        target screen inside the kernel, per-job
+                               precompute, default intensity 27
+                    bastion, heavy: reworked HEFTY1 core
+
+                  Fixes
+                    allium, lyra2, lyra2v2, lyra2z, lyra2z330: the first launch
+                    after a new job could scan past the requested range
+                    argon2d    race in the finalize step; both reported
+                               candidates are now checked separately
+                    blake, blakecoin, vanilla, blake2b: a valid second
+                    candidate in a launch is now submitted too
+                    bmw, bmw512: the second candidate is verified before it
+                    is submitted
+                    heavy, bastion, balloon: scan resume after a find
+                    bastion    two waits shared one sleep slot and overslept
+
+                  Verification
+                    fail-closed GPU self-tests at startup for argon2d (all five
+                    variants), blake256, vanilla, bmw, bmw512 and bastion;
+                    -D runs a GPU-vs-CPU check for them
+
+  Oct. 2nd 2026  ccminer-tpfuemp 2026.09.2
+
+                  New algorithms
+                    verus            VerusHash 2.2 (Verus, PBaaS chains)
+                    homescrypt       HomeScrypt v1.2 (Lumenite)
+                    minotaurx        MinotaurX (Avian, Pulsar)
+                    yespowersmt      Smartiecoin (SMT), yespower N=256 r=8
+
+                  Speed
+                    whirlpool  four hashes per thread, bitsliced: 1.2-2.9x
+                    groestl    several hashes per thread, bitsliced (x-family
+                               stages, groestlcoin, myr-gr, allium, lyra2)
+                    x-family   fused kernels compiled per fixed stage order;
+                               faster jh, shavite, groestl, fugue, hamsi, echo,
+                               simd and groestl256 stages
+                    lyra2      matrix columns held in registers: allium +39%,
+                               lyra2 +37%, lyra2v2 +6% (RTX 3060), lyra2v2
+                               +13% (GTX 1080 Ti)
+                    cryptonight, flex, gr, mike: faster CN core, and a batch
+                               now stops at a job change
+
+                  Fixes
+                    streebog   1 in 256 inputs hashed wrong (gost, polytimos,
+                               skunk, veltor, sib, phi, x21s, x25x)
+                    x16rv2     some stage orders hashed wrong (the stage list
+                               was too short)
+                    lyra2v2    batches whose thread count was not a multiple
+                               of 64 hashed wrong
+                    shared stage finals report the two lowest candidates
+                    atomically; a third concurrent candidate could be lost
+                    missing barriers after shared table fills (echo512,
+                    streebog); bmw512's last launch wrapped past the range
+                    REST API: an algo switch now resets speed and share
+                    counters, as a pool switch already did
+
+                  Build
+                    Linux binaries link the CUDA runtime statically, so they
+                    need only the NVIDIA driver
+
+  Sep. 22nd 2026  ccminer-tpfuemp 2026.09.1
+
+                  New algorithms
+                    flex             Flex (Kylacoin, Lyncoin)
+                    mike             Mike (VKAX, FortuneBlock)
+                    yespowereqpay    EqPay, yespower 1.0 over a 181-byte header
+                    yespoweradvc     AdventureCoin (ADVC), a yespower preset
+                    equihash 144/5 and 192/7 -- a new DIGITBITS=24 solver; 192/7
+                    could not be mined at all before (research use, see notes)
+
+                  Speed
+                    hoohash    ~8% faster, bit-exact against the reference
+                    verthash   32-byte aligned datafile reads, per-card intensity
+                    keccak, sha3t, sha3d, sha512256d: per-arch launch bounds
+                    progpow    one kernel generator and DAG state machine now
+                               shared by kawpow, meowpow, evrprogpow, firopow
+                               and meraki
+
+                  Fixes
+                    hoohash    stratum difficulty factor (2^16, as the coin's own
+                               reference miner uses). Without it the share target
+                               was harder than the network target at the pool's
+                               default difficulty and almost nothing was submitted
+                    candidate reporting and share-difficulty attribution in the
+                    shared screen used by most algorithms
+                    uninitialised buffer readbacks in the hoohash self-test and
+                    in the shared candidate collector
+
+  Sep. 14th 2026  ccminer-tpfuemp 2026.09
+                  New algorithms: the yespower 1.0 family -- yespower, yespowerr16
+                  (Yenten), power2b / yespower-b2b -- with 11 coin presets selected by
+                  -a name or a pool "algo" field (Sugarchain, UraniumX, CPUchain,
+                  Tidecoin, LightningCash-Gold, MagpieCoin, Arowana, IsotopeC, IOTS,
+                  LightBit); argon2id1024 (Bitweb)
+
+                  Revived: -a scrypt and -a scrypt-jane, which had no dispatch entry and
+                  could not run at all; -a lyra2v2, which faulted on every launch after a
+                  shared stage changed its buffer layout for another algo; -a lyra2z330
+
+                  Consensus fix: -a decred now mines BLAKE3 (DCP-0011), not Blake-256.
+                  It had been computing Blake-256 since the fork inherited it and could
+                  not produce an acceptable share.
+
+                  Share-loss fixes: 64-bit target compare in blake / blakecoin / vanilla
+                  (the old screen dropped valid shares below difficulty 1); atomic
+                  candidate reporting in groestl256 -- whose second-nonce channel was
+                  entirely dead -- balloon, blake2b, sia and heavyhash; second-nonce
+                  re-verify guards in ghostrider, lyra2RE and allium; duplicate-submit
+                  nonce cursors; UINT32_MAX sentinel across 28 files, since 0 is a legal
+                  nonce
+
+                  Speedups on Ampere, verified against a live pool:
+                    rinhash     6.9x    shared argon2d cooperative fill
+                    heavyhash   4.9x    __dp4a nibble matrix, 16 -> 4 KB of shared
+                    curvehash   2.3x    safegcd inversion, then a 16-bit ecmult_gen window
+                    yespower    2.3x    S-box placement and a 32-thread block, over the
+                                        initial port earlier in this same cycle
+                    odocrypt    1.9x    funnel-shift rotate + per-epoch NVRTC JIT
+                    vanilla     1.46x   default intensity
+                    blake2s     1.14x   default intensity
+                    allium and lyra2 1.14x, lyra2z 1.03x, also default intensity
+                  scrypt, scrypt-jane, lyra2v2 and lyra2z330 carry no factor: they could
+                  not run at all before (see Revived)
+
+                  Pool switching: several fixes, all of which only bite when more than one
+                  pool is configured --
+                    A switch did not close the previous pool's stratum session, so the miner
+                    kept mining the OLD pool's jobs under the NEW pool's algorithm and every
+                    share after the first switch was rejected. Rotating between two pools now
+                    mines and submits on the pool it actually selected.
+                    --time-limit and --shares-limit never stopped the miner: every pool
+                    inherited the value, which made them rotate for ever and left the
+                    documented "timeout reached, exiting" unreachable. A limit given on the
+                    command line now ends the run, and its deadline is measured across the
+                    whole session, so repeated pool rotation cannot keep deferring it. A
+                    pool that sets its own time-limit or shares-limit in the config still
+                    rotates, as before.
+                    A requested shutdown was treated as a dead pool and triggered a failover
+                    into the teardown, which could crash on exit.
+                    "shares-limit" is now accepted as a per-pool config key; it had a setter
+                    but was missing from the key table, so it was silently ignored.
+                  CUDA 12: the texture-reference API that CUDA 12 removed is gone from
+                  the four files that still used it. A validated ccminer-kudaraidee-cuda12.vcxproj
+                  (CUDA 12.9) builds alongside the shipping CUDA 11.8 project; 11.8 still
+                  ships, since the two measured within noise of each other
+
+                  REST API: an HTTP/JSON API alongside the legacy binary protocol, with
+                  runtime control (pool and algo switching, pause/resume), Prometheus
+                  metrics, a /health endpoint and --api-remote privilege separation.
+                  See docs/api-rest.md and docs/openapi.yaml
+
+                  Reliability: device self-tests now fail closed instead of logging a
+                  warning and mining on; an algo switch frees GPU buffers, drops stale
+                  shares and resets per-pool stats; NVRTC is linked statically
+
+  Jul. 22nd 2026  ccminer-tpfuemp 2026.07.2
+                  New algorithms: kawpow (Ravencoin), meowpow (Meowcoin),
+                  evrprogpow (Evrmore), firopow (Firo / StakeCube), meraki
+                  (Telestai) -- the ProgPoW-over-ethash family; verthash
+                  (Vertcoin); curvehash (CurvehashCoin, secp256k1 EC on GPU);
+                  whirlpoolx2 (CapStash); argon2d500 (Dynamic) and argon2d4096
+                  (Argentum / Myriad)
+                  ProgPoW family: shared progpow_multi core reusing the kawpow
+                  ethash library, with per-period NVRTC JIT and on-GPU DAG
+                  generation; one cnt_dag knob parameterises the DAG-loop count
+                  verthash: on-GPU hashing, plus --generate-verthash-dat to
+                  build verthash.dat
+                  argon2d: fix a last-column/cache aliasing race (~2.8x on
+                  lanes=1 coins); argon2d16000 (Alterdot) now works on GPU
+                  Fix: Linux release is now a portable baseline build
+                  (-mtune=generic) to avoid "Illegal instruction" on older CPUs
+
+  Jul. 17th 2026  ccminer-tpfuemp 2026.07.1
+                  New algorithms: x25x (SUQA/SIN), soterg (Soteria / X12R),
+                  sha512256d (Radiant, double SHA-512/256)
+                  algos/ refactor: all algorithm families migrated into the algos/ tree;
+                  shared CUDA device-primitive libraries (x11 / x16 / keccak / SHA-512)
+                  with de-branded bare stage launchers and consolidated headers
+                  Register-resident fused multi-stage kernels for the x16 / x-family chains
+                  Linux (autotools) build refreshed
+                  Optimise: keccak sha3d +20%; x25x shared-memory shuffle + slot-major
+                  accumulator (~3.7x over the first working build)
+                  Fix: BMW-256 (-a bmw) out-of-bounds crash
+
+  Jul. 12th 2026  ccminer-tpfuemp 2026.07
+                  Require the CUDA 11.8 Toolkit (Visual Studio 2022); drop 10.x/11.0-11.7
+                  Build floor is now sm_61 (Pascal): default gencode sm_61/75/86 + compute_86 PTX
+                  Drop Maxwell (sm_50/52), Kepler and Fermi, and all arch-specific code below sm_61
+                  Remove the stale CUDA 10 project files (ccminer-cuda10.*)
+                  Pre-Pascal GPU or older CUDA needed: use upstream https://github.com/tpruvot/ccminer
+
   Jan. 04th 2017  v2.2.4
                   Improve lyra2v2
                   Higher keccak default intensity

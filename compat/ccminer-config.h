@@ -161,10 +161,10 @@
 #define PACKAGE_NAME "ccminer-kudaraidee"
 
 /* Define to the home page for this package. */
-#define PACKAGE_URL "http://github.com/kudaraidee/ccminer-kudaraidee"
+#define PACKAGE_URL "https://github.com/Kudaraidee/ccminer-kudaraidee"
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "1.3.0"
+#define PACKAGE_VERSION "1.4.0"
 
 /* If using the C implementation of alloca, define if you know the
    direction of stack growth for your system; otherwise it will be

@@ -52,15 +52,14 @@ static __inline int setpriority(int which, int who, int prio)
 typedef int ssize_t;
 
 __inline int msver(void) {
-	if (_MSC_VER >= 1930) return 2022;
-	if (_MSC_VER >= 1920) return 2019;
-	if (_MSC_VER >= 1910) return 2017;
-	if (_MSC_VER >= 1900) return 2015;
-	if (_MSC_VER >= 1800) return 2013;
-	if (_MSC_VER >= 1700) return 2012;
-	if (_MSC_VER >= 1600) return 2010;
-	if (_MSC_VER >= 1500) return 2008;
-	return (_MSC_VER / 100) + 2000;
+	switch (_MSC_VER) {
+	case 1500: return 2008;
+	case 1600: return 2010;
+	case 1700: return 2012;
+	case 1800: return 2013;
+	case 1900: return 2015;
+	default: return (_MSC_VER/100);
+	}
 }
 
 #include <stdlib.h>

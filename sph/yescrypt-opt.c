@@ -37,8 +37,8 @@
 
 #include "yescrypt-platform.h"
 
-char *client_key;    // true for GlobalBoost-Y
-size_t client_key_len = 0xff;
+YESCRYPT_TLS char *client_key;    // NULL for GlobalBoost-Y
+YESCRYPT_TLS size_t client_key_len;
 
 static __inline void blkcpy(uint64_t * dest, const uint64_t * src, size_t count)
 {
