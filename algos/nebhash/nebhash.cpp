@@ -397,12 +397,13 @@ void nebhash_get_target(uint8_t le[32])
 
 double nebhash_target_to_diff(const uint8_t le[32])
 {
+	/* Match yiimp's nebhash_le_to_diff(): 2^256 / (target + 1). The inverse
+	 * nebhash_diff_to_target() there uses 2^256 / diff - 1, so dropping the
+	 * +1 here would report a slightly different difficulty than the pool. */
 	long double t = 0.0L;
 	for (int i = 31; i >= 0; i--)
 		t = t * 256.0L + le[i];
-	if (!(t > 0.0L))
-		return 0.0;
-	return (double)(ldexpl(1.0L, 256) / t);
+	return (double)(ldexpl(1.0L, 256) / (t + 1.0L));
 }
 
 int nebhash_build_header(uint32_t version, const uint8_t parent[32],
