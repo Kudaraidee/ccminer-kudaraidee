@@ -2000,14 +2000,14 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 			pthread_mutex_unlock(&stratum_work_lock);
 			return false;
 		}
-		/* Roll extranonce2 per job, as with the standard stratum path. */
-		if (sctx->job.xnonce2)
-			for (i = 0; i < (int)sctx->xnonce2_size && !++sctx->job.xnonce2[i]; i++);
-
+		/* Use the per-work copy made above. Rolling sctx->job.xnonce2 before
+		 * this call would build a header with the NEXT extranonce2 while the
+		 * submit below echoes work->xnonce2, so the pool would recompute a
+		 * different ticket and reject every share as low difficulty. */
 		if (nebhash_build_header(sctx->job.neb_version, sctx->job.neb_parent,
 			sctx->job.neb_cb_prefix, sctx->job.neb_cb_prefix_len,
 			sctx->xnonce1, sctx->xnonce1_size,
-			sctx->job.xnonce2, sctx->xnonce2_size,
+			work->xnonce2, sctx->xnonce2_size,
 			sctx->job.neb_cb_suffix, sctx->job.neb_cb_suffix_len,
 			sctx->job.neb_branch, sctx->job.neb_branch_count, sctx->job.neb_tx_count,
 			sctx->job.neb_shares_root, sctx->job.neb_time_start,
@@ -2015,6 +2015,9 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 			pthread_mutex_unlock(&stratum_work_lock);
 			return false;
 		}
+		/* Only now advance the job's extranonce2 for the next work item. */
+		if (sctx->job.xnonce2)
+			for (i = 0; i < (int)sctx->xnonce2_size && !++sctx->job.xnonce2[i]; i++);
 
 		memset(work->data, 0, sizeof(work->data));
 		memcpy(work->data, work->neb_header, 80);   // data[19] = nonce cursor
