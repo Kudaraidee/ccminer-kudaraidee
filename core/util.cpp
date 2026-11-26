@@ -2044,7 +2044,13 @@ static bool nebhash_stratum_notify(struct stratum_ctx *sctx, json_t *params)
 	job->neb_branch = branch;
 	job->neb_branch_count = branch_count;
 	nebhash_get_target(job->neb_pool_target);
-	memset(job->neb_xnonce2, 0, sizeof(job->neb_xnonce2));
+	/* extranonce2 keeps rolling for the whole session; it is zeroed only with
+	 * the job at session start (stratum_free_job). Resetting it per notify
+	 * rebuilt an already-mined header whenever a pool re-sent the same job
+	 * (meshpool does, with clean=true), so the scan re-found the shares it had
+	 * submitted ~20 s earlier: duplicates. */
+	if (!job->xnonce2)
+		memset(job->neb_xnonce2, 0, sizeof(job->neb_xnonce2));
 	job->xnonce2 = job->neb_xnonce2;
 	job->height = nebhash_json_u32(json_object_get(j, "height"), &height) ? height : 0;
 	job->clean = json_object_get(j, "clean") ? json_is_true(json_object_get(j, "clean")) : true;
@@ -2487,8 +2493,12 @@ static bool stratum_unknown_method(struct stratum_ctx *sctx, json_t *id)
 	json_t *val;
 	bool ret = false;
 
+	/* An unknown notification (null id) needs no answer: report it handled.
+	 * Returning false here made stratum_authorize() take it for the authorize
+	 * answer (meshpool sends mining.nodes in that window) and fail the login;
+	 * the main loop's fallback, stratum_handle_response(), ignores null ids. */
 	if (!id || json_is_null(id))
-		return ret;
+		return true;
 
 	val = json_object();
 	json_object_set(val, "id", id);

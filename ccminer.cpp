@@ -3930,11 +3930,14 @@ static bool stratum_handle_response(char *buf)
 	} else {
 		if (!res_val)
 			goto out;
-		/* errors are [code, "msg", ...] here, or {"code": n, "msg": "..."} (Pearl) */
+		/* errors are [code, "msg", ...] here, or {"code": n, "msg": "..."} (Pearl),
+		 * or the JSON-RPC {"code": n, "message": "..."} */
 		const char *reason = NULL;
-		if (err_val && json_is_object(err_val))
+		if (err_val && json_is_object(err_val)) {
 			reason = json_string_value(json_object_get(err_val, "msg"));
-		else if (err_val)
+			if (!reason)
+				reason = json_string_value(json_object_get(err_val, "message"));
+		} else if (err_val)
 			reason = json_string_value(json_array_get(err_val, 1));
 		share_result(json_is_true(res_val), stratum.pooln, sharediff, reason);
 	}
