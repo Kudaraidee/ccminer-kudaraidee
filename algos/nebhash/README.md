@@ -106,14 +106,21 @@ verification stays enabled; use `--cert` only to supply a custom CA bundle.
 | GPU | Arch | Rate | Notes |
 | :-- | :-- | :-- | :-- |
 | GTX 1050 Ti | sm_61 | ~0.43 MH/s avg (~0.25–0.55) | 2026-11-26, live pool, official dataset, `sm_61` kernel. 5-minute run: 432.33 kH/s, 1/1 share accepted, no reject. A 150-second A/B run averaged 493.47 kH/s. Earlier runs also accepted every share, with and without `sd=`. |
+| GTX 1050 Ti | sm_61 | ~0.50–0.53 MH/s avg | 2026-11-26, packed int8 convolution rows with automatic int16 fallback. Two 170-second local `neb-pool/1` runs with the official dataset averaged 529.02 and 506.61 kH/s; the adjacent 16-bit baseline runs averaged 517.30 and 486.20 kH/s. All shares accepted, no rejects. |
 
 Lowering the linear-layer shared-memory footprint from `4 × (cout + cin)` to
 `4 × cout` words kept every ticket identical in the differential test but did
 not change the rate materially. A/B runs of the warp reduction versus the old
 shared-atomic reduction showed about 3% higher throughput. Precomputing 32-bit
 row offsets, using `__ldg` for the table rows, and dropping `THREADS` from 256
-to 128 raised the 5-minute average from ~0.34 to ~0.41–0.43 MH/s. Variants that
-passed the differential test but were discarded as slower or less stable:
+to 128 raised the 5-minute average from ~0.34 to ~0.41–0.43 MH/s. Convolution
+factors are now stored as signed 8-bit values when every sample gradient fits;
+the builder retries with the original signed 16-bit layout if any row would
+overflow, so the ticket is unchanged. Four rows are transposed into one word and
+summed with `__dp4a`, which gave a further ~2–4% on the GTX 1050 Ti. Variants
+that passed the differential test but were discarded as slower or less stable:
 aligned 32-bit transposed staging, two convolution weights per load, branchless
-`dp4a`, 512 threads, and 64 threads.
+`dp4a`, precomputed row offsets in shared memory, 512 threads, and 64 threads.
+A `__dp2a`-based packed int16 variant was also discarded because it failed the
+exact-ticket differential.
 

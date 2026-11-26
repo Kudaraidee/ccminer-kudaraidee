@@ -3,7 +3,7 @@
 // The gradient of an attempt is the sum of the gradients of its 16 samples, clipped afterwards, and the gradient of a
 // sample depends on the model and on that sample only. For one model state the host evaluates every sample once with
 // neb2_sample_grad of the C reference and uploads one row per sample. A row holds, per layer: every gradient entry of
-// a convolution (16 bits, or 32 when a value does not fit), and for a linear layer its cout errors then its cin
+// a convolution (8 or 16 bits, or 32 when a value does not fit), and for a linear layer its cout errors then its cin
 // inputs, whose outer product is the gradient of the layer. One thread block evaluates one attempt: it gathers the
 // factors of its 16 rows, transposed so that one entry of a linear layer is four dp4a, sums, clips, and hashes.
 #include "nebhash2_table_cuda.h"
@@ -70,7 +70,7 @@ static __device__ void b3_compress(const uint32_t cv[8], const uint32_t blk[16],
   for (int i = 0; i < 8; i++) out[i] = v[i] ^ v[i + 8];
 }
 
-enum { NARROW = 0, WIDE = 1, LINEAR = 2 };
+enum { NARROW = 0, WIDE = 1, LINEAR = 2, NARROW8 = 3 };
 
 // The layout of a row and of the shared memory of a block.
 struct TPlan {
@@ -168,15 +168,47 @@ __global__ void __launch_bounds__(THREADS) table_kernel(const uint8_t *__restric
         }
       }
     } else {
-      for (int f = tid; f < P.nw[i]; f += THREADS) {
-        int G = 0;
-        if (P.kind[i] == NARROW) {
-          for (int b = 0; b < NEB_NB; b++) G += __ldg((const int16_t *)(rows + rb[b] + P.at[i] + 2 * f));
-        } else {
-          for (int b = 0; b < NEB_NB; b++) G += __ldg((const int32_t *)(rows + rb[b] + P.at[i] + 4 * f));
+      if (P.kind[i] == NARROW8) {
+        // Four consecutive int8 factors occupy one aligned word. Transpose the
+        // bytes of four rows so each resulting word holds one factor from four
+        // samples, then dp4a sums those four samples with no 16-bit truncation.
+        for (int f0 = 4 * tid; f0 < P.nw[i]; f0 += 4 * THREADS) {
+          int G0 = 0, G1 = 0, G2 = 0, G3 = 0;
+#pragma unroll
+          for (int r = 0; r < NEB_NB; r += 4) {
+            const uint32_t p0 = __ldg((const uint32_t *)(rows + rb[r + 0] + P.at[i] + f0));
+            const uint32_t p1 = __ldg((const uint32_t *)(rows + rb[r + 1] + P.at[i] + f0));
+            const uint32_t p2 = __ldg((const uint32_t *)(rows + rb[r + 2] + P.at[i] + f0));
+            const uint32_t p3 = __ldg((const uint32_t *)(rows + rb[r + 3] + P.at[i] + f0));
+            const uint32_t t0 = (p0 & 0xffu) | ((p1 & 0xffu) << 8) | ((p2 & 0xffu) << 16) | ((p3 & 0xffu) << 24);
+            const uint32_t t1 = ((p0 >> 8) & 0xffu) | (((p1 >> 8) & 0xffu) << 8) | (((p2 >> 8) & 0xffu) << 16) | (((p3 >> 8) & 0xffu) << 24);
+            const uint32_t t2 = ((p0 >> 16) & 0xffu) | (((p1 >> 16) & 0xffu) << 8) | (((p2 >> 16) & 0xffu) << 16) | (((p3 >> 16) & 0xffu) << 24);
+            const uint32_t t3 = ((p0 >> 24) & 0xffu) | (((p1 >> 24) & 0xffu) << 8) | (((p2 >> 24) & 0xffu) << 16) | (((p3 >> 24) & 0xffu) << 24);
+            G0 = __dp4a((int)t0, (int)0x01010101, G0);
+            G1 = __dp4a((int)t1, (int)0x01010101, G1);
+            G2 = __dp4a((int)t2, (int)0x01010101, G2);
+            G3 = __dp4a((int)t3, (int)0x01010101, G3);
+          }
+          const int G[4] = {G0, G1, G2, G3};
+#pragma unroll
+          for (int j = 0; j < 4; j++) {
+            const int f = f0 + j;
+            if (f >= P.nw[i]) break;
+            const int cg = G[j] < -CLIPV ? -CLIPV : (G[j] > CLIPV ? CLIPV : G[j]);
+            lane[f & 7] += (uint32_t)cg ^ ((uint32_t)f + base);
+          }
         }
-        const int cg = G < -CLIPV ? -CLIPV : (G > CLIPV ? CLIPV : G);
-        lane[f & 7] += (uint32_t)cg ^ ((uint32_t)f + base);
+      } else {
+        for (int f = tid; f < P.nw[i]; f += THREADS) {
+          int G = 0;
+          if (P.kind[i] == NARROW) {
+            for (int b = 0; b < NEB_NB; b++) G += __ldg((const int16_t *)(rows + rb[b] + P.at[i] + 2 * f));
+          } else {
+            for (int b = 0; b < NEB_NB; b++) G += __ldg((const int32_t *)(rows + rb[b] + P.at[i] + 4 * f));
+          }
+          const int cg = G < -CLIPV ? -CLIPV : (G > CLIPV ? CLIPV : G);
+          lane[f & 7] += (uint32_t)cg ^ ((uint32_t)f + base);
+        }
       }
     }
   }
@@ -224,7 +256,7 @@ struct neb2t_scan {
 
 #define TRY(x) do { const cudaError_t e_ = (x); if (e_ != cudaSuccess) return (int)e_; } while (0)
 
-static void make_plan(const neb2_arch *A, const int *wide, TPlan *p) {
+static void make_plan(const neb2_arch *A, const int *wide, const int *narrow8, TPlan *p) {
   memset(p, 0, sizeof *p);
   p->nlayers = A->nlayers;
   int at = 0, sh = 0;
@@ -240,8 +272,8 @@ static void make_plan(const neb2_arch *A, const int *wide, TPlan *p) {
       p->sh_d[i] = sh; sh += 4 * L.cout;
       p->sh_in[i] = sh; // unused: input words are reloaded per q, not staged
     } else {
-      p->kind[i] = wide[i] ? WIDE : NARROW;
-      at += (wide[i] ? 4 : 2) * L.nw;
+      p->kind[i] = wide[i] ? WIDE : (narrow8[i] ? NARROW8 : NARROW);
+      at += wide[i] ? 4 * L.nw : (narrow8[i] ? ((L.nw + 3) & ~3) : 2 * L.nw);
     }
     at = (at + 3) & ~3;
   }
@@ -249,8 +281,11 @@ static void make_plan(const neb2_arch *A, const int *wide, TPlan *p) {
   p->shared_words = sh;
 }
 
-// Fills the rows of every sample for the weights. Returns the layer whose values do not fit 16 bits, or -1.
-static int fill_rows(neb2t_scan *s, const neb2_arch *A, const int8_t *weights) {
+// Fills the rows of every sample for the weights. Returns the layers whose values do not fit their compact
+// representation: 8 bits for an int8 convolution layer, 16 bits for an int16 convolution layer.
+struct FillStatus { int wide_layer, narrow8_layer; };
+
+static FillStatus fill_rows(neb2t_scan *s, const neb2_arch *A, const int8_t *weights) {
   neb2_model *m = (neb2_model *)calloc(1, sizeof *m);
   m->arch = s->arch;
   memcpy(m->w, weights, (size_t)A->nweights);
@@ -258,7 +293,7 @@ static int fill_rows(neb2t_scan *s, const neb2_arch *A, const int8_t *weights) {
   s->rows.assign((size_t)p.row * s->n, 0);
   unsigned nt = std::thread::hardware_concurrency();
   if (nt == 0) nt = 4;
-  std::vector<int> overflow(nt, -1);
+  std::vector<int> overflow(nt, -1), overflow8(nt, -1);
   std::vector<std::thread> th;
   for (unsigned t = 0; t < nt; t++)
     th.emplace_back([&, t] {
@@ -275,6 +310,13 @@ static int fill_rows(neb2t_scan *s, const neb2_arch *A, const int8_t *weights) {
             f += L.cout + L.cin;
           } else if (p.kind[l] == WIDE) {
             memcpy(row + p.at[l], g.data() + L.w_off, (size_t)4 * L.nw);
+          } else if (p.kind[l] == NARROW8) {
+            uint8_t *o = (uint8_t *)(row + p.at[l]);
+            for (int k = 0; k < L.nw; k++) {
+              const int32_t v = g[L.w_off + k];
+              if (v < -128 || v > 127) { overflow8[t] = l; break; }
+              o[k] = (uint8_t)(int8_t)v;
+            }
           } else {
             int16_t *o = (int16_t *)(row + p.at[l]);
             for (int k = 0; k < L.nw; k++) {
@@ -288,20 +330,25 @@ static int fill_rows(neb2t_scan *s, const neb2_arch *A, const int8_t *weights) {
     });
   for (auto &t : th) t.join();
   free(m);
-  for (int o : overflow)
-    if (o >= 0) return o;
-  return -1;
+  FillStatus st = {-1, -1};
+  for (int o : overflow) if (o >= 0) st.wide_layer = o;
+  for (int o : overflow8) if (o >= 0) st.narrow8_layer = o;
+  return st;
 }
 
 static int build(neb2t_scan *s, const int8_t *weights) {
   const neb2_arch *A = neb2_arch_get(s->arch);
-  int wide[NEB2_MAX_LAYERS] = {0};
-  for (int i = 0; i < A->nlayers; i++) wide[i] = s->plan.kind[i] == WIDE;
+  int wide[NEB2_MAX_LAYERS] = {0}, n8[NEB2_MAX_LAYERS] = {0};
+  for (int i = 0; i < A->nlayers; i++) {
+    wide[i] = s->plan.kind[i] == WIDE;
+    n8[i] = !wide[i] && A->l[i].kind != NEB2_LINEAR;
+  }
   for (;;) {
-    make_plan(A, wide, &s->plan);
-    const int o = fill_rows(s, A, weights);
-    if (o < 0) break;
-    wide[o] = 1;
+    make_plan(A, wide, n8, &s->plan);
+    const FillStatus st = fill_rows(s, A, weights);
+    if (st.narrow8_layer >= 0) { n8[st.narrow8_layer] = 0; continue; }
+    if (st.wide_layer >= 0) { wide[st.wide_layer] = 1; n8[st.wide_layer] = 0; continue; }
+    break;
   }
   if (s->rows.size() > UINT32_MAX) return (int)cudaErrorInvalidValue;
   TRY(cudaSetDevice(s->device));

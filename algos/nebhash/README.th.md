@@ -105,12 +105,18 @@ TLS ยังเปิดอยู่เสมอ ใช้ `--cert` เฉพ�
 | GPU | Arch | อัตรา | หมายเหตุ |
 | :-- | :-- | :-- | :-- |
 | GTX 1050 Ti | sm_61 | เฉลี่ย ~0.43 MH/s (~0.25–0.55) | 2026-11-26, ขุดกับ pool จริง, ใช้ชุดข้อมูลทางการ, kernel `sm_61` รัน 5 นาทีได้ 432.33 kH/s, share 1/1 ถูกยอมรับ, ไม่มี reject รัน A/B 150 วิได้เฉลี่ย 493.47 kH/s รันก่อนหน้ายอมรับทุก share ทั้งที่มีและไม่มี `sd=` |
+| GTX 1050 Ti | sm_61 | เฉลี่ย ~0.50–0.53 MH/s | 2026-11-26, เก็บ convolution factor เป็น int8 พร้อม fallback กลับไป int16 อัตโนมัติ รัน 170 วิสองรอบกับ pool ท้องถิ่น `neb-pool/1` และชุดข้อมูลทางการได้เฉลี่ย 529.02 และ 506.61 kH/s ขณะที่รอบ baseline int16 ที่อยู่ข้างกันได้ 517.30 และ 486.20 kH/s share ทุกตัวถูกยอมรับ ไม่มี reject |
 
 การลด shared memory ของ linear layer จาก `4 × (cout + cin)` เป็น `4 × cout`
 words ทำให้ ticket เหมือนเดิมทุกตัวในการทดสอบ differential แต่ความเร็วไม่
 เปลี่ยนมากนัก การเปรียบเทียบ A/B ระหว่าง warp reduction กับ shared-atomic
 แบบเดิมพบว่าเร็วขึ้นราว 3% การ precompute row offset แบบ 32 บิต, การใช้
 `__ldg` กับแถวของตาราง และการลด `THREADS` จาก 256 เป็น 128 ทำให้เฉลี่ย 5 นาที
-เพิ่มจาก ~0.34 เป็น ~0.41–0.43 MH/s ตัวแปรที่ผ่าน differential แต่ถูกทิ้งเพราะ
-ช้าหรือเสถียรน้อยกว่าได้แก่ staging แบบ transposed 32 บิต, การโหลด convolution
-weight สองตัวต่อครั้ง, `dp4a` แบบไม่มี branch, 512 threads และ 64 threads
+เพิ่มจาก ~0.34 เป็น ~0.41–0.43 MH/s ตอนนี้เก็บ convolution factor เป็น int8
+เมื่อ gradient ทุกตัวของทุกแถวใส่ได้ และ builder จะลอง layout int16 เดิมทันทีถ้ามี
+ค่าเกินช่วง จึงทำให้ ticket เหมือนเดิมทุกตัว การ transpose สี่แถวเป็นคำเดียวแล้วรวมด้วย
+`__dp4a` ช่วยเพิ่มอีกประมาณ 2–4% บน GTX 1050 Ti ตัวแปรที่ผ่าน differential แต่ถูก
+ทิ้งเพราะช้าหรือเสถียรน้อยกว่าได้แก่ staging แบบ transposed 32 บิต, การโหลด
+convolution weight สองตัวต่อครั้ง, `dp4a` แบบไม่มี branch, row offset ที่ precompute
+ใน shared memory, 512 threads และ 64 threads ส่วนตัวแปร `__dp2a` สำหรับ int16
+ถูกทิ้งทันทีเพราะ differential ไม่ผ่าน
