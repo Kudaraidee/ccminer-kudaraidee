@@ -193,7 +193,8 @@ bool ensure_scan(int thr_id, int slot, const uint8_t model_hash[32])
 			return false;
 		}
 		ref->arch = a->id;
-		memset(ref->model_hash, 0, 32);
+		// Opening the handle already built and uploaded this model.
+		memcpy(ref->model_hash, model_hash, 32);
 	} else if (ref->arch != a->id) {
 		neb2t_scan_close(ref->h);
 		ref->h = NULL;

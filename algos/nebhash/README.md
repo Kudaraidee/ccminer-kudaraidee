@@ -135,8 +135,8 @@ shared-atomic reduction showed about 3% higher throughput. Precomputing 32-bit
 row offsets, using `__ldg` for the table rows, and dropping `THREADS` from 256
 to 128 raised the 5-minute average from ~0.34 to ~0.41–0.43 MH/s. Convolution
 factors are now stored as signed 8-bit values when every sample gradient fits;
-the builder retries with the original signed 16-bit layout if any row would
-overflow, so the ticket is unchanged. Four rows are transposed into one word and
+the builder uses int16 or int32 for a layer when its gradients need a wider
+representation, preserving the ticket. Four rows are transposed into one word and
 summed with `__dp4a`, which gave a further ~2–4% on the GTX 1050 Ti. Variants
 that passed the differential test but were discarded as slower or less stable:
 aligned 32-bit transposed staging, two convolution weights per load, branchless
@@ -188,11 +188,11 @@ tickets per case.
 
 ### Batched convolution-width fallback
 
-The builder records all convolution layers that overflow int8 or int16
-during the first pass over the dataset. It widens those layers together
-and rebuilds the table once before uploading it to CUDA. An int8 layer
-whose gradients exceed the int16 range goes directly to int32. Models
-whose gradients fit the selected widths finish in one pass.
+Commit `e918186` recorded every convolution layer that overflowed int8 or
+int16 during the first pass and widened them together in one rebuild.
+Commit `6a9d8d5` removed the repeat evaluation by retaining full-width
+convolution gradients for one pass, then compacting the table in place
+before uploading it to CUDA. The host buffer retains its raw capacity.
 
 Live runs on the GTX 1050 Ti with the official dataset accepted 41/41
 shares on Yiimp and 8/8 on MeshPool. The table below measures subsequent
@@ -207,3 +207,24 @@ repetitions per builder. Time includes table creation and upload.
 Each replay produced the same table and layout hash, and the same set of
 hits in a 384-nonce scan. The measurements quantify the wait for a new model
 table. CUDA scan throughput is measured separately.
+
+### Reuse the table created when opening a scan handle
+
+`neb2t_scan_open()` builds and uploads the supplied model. After a
+successful open, the host records its weights hash in the scan handle,
+so the first scan uses that table immediately. A different weights hash
+for the same handle still triggers one rebuild and upload.
+
+A GTX 1050 Ti replay using the one-pass builder and the same captured
+Yiimp model in both variants reduced the mean time from `mining.notify`
+to the first completed CUDA batch from 7.98 s to 2.89 s. Each variant ran
+twice. The number of table builds before the first scan dropped from two
+to one. Both runs of the new variant also built a replacement table and
+submitted a share after the replay changed the model in the same slot.
+
+The optimized miner ran for three minutes per pool with the same
+32-byte miner-side share target, about 8.59 million nonces per expected
+share. It received 11/11 accepted shares on Yiimp and 18/18 on MeshPool.
+The first scan handle built one table on both pools. MeshPool remained
+at height 12048 during its run. The same-slot model transition was
+covered by the local replay.
