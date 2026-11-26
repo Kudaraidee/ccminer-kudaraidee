@@ -44,8 +44,9 @@ lifetime while amortising host/device synchronisation; the hit list is
 
 For a linear layer the kernel stages only the `4 × cout` error words in shared
 memory and reloads the `4 × cin` input words directly from the table rows once
-per input element. The order of the inner `cout × cin` accumulation changes, but
-the lane sums are modulo `2^32`, so the resulting ticket is unchanged.
+per input element. The eight lane accumulators are reduced per warp and then
+summed once by thread 0, instead of 256 shared-memory atomics per lane. All
+sums are modulo `2^32`, so changing the order does not change the ticket.
 
 ## Provenance
 
@@ -97,10 +98,13 @@ verification stays enabled; use `--cert` only to supply a custom CA bundle.
 
 | GPU | Arch | Rate | Notes |
 | :-- | :-- | :-- | :-- |
-| GTX 1050 Ti | sm_61 | ~0.33 MH/s avg (~0.20–0.38) | 2026-11-26, live pool, official dataset, table kernel. 5-minute run: 1/1 share accepted, no reject; earlier 15-minute run also accepted every share, with and without `sd=`. |
+| GTX 1050 Ti | sm_61 | ~0.34 MH/s avg (~0.24–0.39) | 2026-11-26, live pool, official dataset, `sm_61` warp-reduction kernel, 5-minute run: 1/1 share accepted, no reject. Earlier runs also accepted every share, with and without `sd=`. |
 
 Lowering the linear-layer shared-memory footprint from `4 × (cout + cin)` to
-`4 × cout` words kept every ticket identical in the differential test, but did
-not change the measured rate materially on this card; it remains as a smaller
-per-block resource footprint.
+`4 × cout` words kept every ticket identical in the differential test but did
+not change the rate materially. A/B runs of the warp reduction versus the old
+shared-atomic reduction showed about 3% higher throughput on the same card.
+Replacing byte loads with 32-bit transposed loads, loading two convolution
+weights per iteration, and raising `THREADS` to 512 also passed the differential
+test but measured slower (~0.22–0.24 MH/s), so those variants were discarded.
 

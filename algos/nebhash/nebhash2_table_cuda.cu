@@ -88,12 +88,20 @@ static __device__ __constant__ TPlan P;
 #define CLIPV NEB_CLIP
 #endif
 
+__device__ __forceinline__ uint32_t warp_sum(uint32_t v)
+{
+  for (int off = 16; off; off >>= 1)
+    v += __shfl_down_sync(0xffffffffu, v, off);
+  return v;
+}
+
 __global__ void __launch_bounds__(THREADS) table_kernel(const uint8_t *__restrict__ rows, uint32_t n,
                                                         const uint32_t *__restrict__ h0, uint32_t start,
                                                         const uint32_t *__restrict__ bound, uint32_t *hits,
                                                         uint32_t max_hits) {
   extern __shared__ int32_t S[];  // per linear layer: cout x 4 words of errors (inputs reloaded from rows)
   __shared__ uint32_t key[8], idx[NEB_NB], lanes[8];
+  __shared__ uint32_t wsum[8][THREADS / 32];
   const int tid = threadIdx.x;
   const uint32_t nonce = start + blockIdx.x;
   if (tid < 8) lanes[tid] = 0;
@@ -167,8 +175,23 @@ __global__ void __launch_bounds__(THREADS) table_kernel(const uint8_t *__restric
       }
     }
   }
-  for (int k = 0; k < 8; k++) atomicAdd(&lanes[k], lane[k]);
-  __syncthreads();
+  // One reduction per warp instead of 256 shared-memory atomics per lane.
+  // Addition is modulo 2^32, so changing the accumulation order is safe.
+  {
+    const int warp = tid >> 5;
+    for (int k = 0; k < 8; k++) {
+      const uint32_t v = warp_sum(lane[k]);
+      if (!(tid & 31)) wsum[k][warp] = v;
+    }
+    __syncthreads();
+    if (!tid) {
+      for (int k = 0; k < 8; k++) {
+        uint32_t v = 0;
+        for (int w = 0; w < THREADS / 32; w++) v += wsum[k][w];
+        lanes[k] = v;
+      }
+    }
+  }
   if (tid == 0) {
     uint32_t blk[16], iv[8], t[8];
     for (int i = 0; i < 8; i++) { blk[i] = lanes[i]; blk[8 + i] = key[i]; iv[i] = kIV[i]; }
