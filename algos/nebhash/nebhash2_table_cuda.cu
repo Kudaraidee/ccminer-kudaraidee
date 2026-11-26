@@ -272,8 +272,8 @@ static void make_plan(const neb2_arch *A, const int *wide, const int *narrow8, T
   p->shared_words = sh;
 }
 
-// Track all convolution layers that need a wider representation. Check the int16 range
-// even when packing int8 so one rebuild can choose the final width for every layer.
+// Keep full convolution gradients and record the minimum width required by each layer.
+// Linear factors already use their final representation.
 struct FillStatus { unsigned wide_layers, narrow8_layers; };
 
 static FillStatus fill_rows(neb2t_scan *s, const neb2_arch *A, const int8_t *weights) {
@@ -299,22 +299,13 @@ static FillStatus fill_rows(neb2t_scan *s, const neb2_arch *A, const int8_t *wei
           if (p.kind[l] == LINEAR) {
             memcpy(row + p.at[l], f, (size_t)(L.cout + L.cin));
             f += L.cout + L.cin;
-          } else if (p.kind[l] == WIDE) {
-            memcpy(row + p.at[l], g.data() + L.w_off, (size_t)4 * L.nw);
-          } else if (p.kind[l] == NARROW8) {
-            uint8_t *o = (uint8_t *)(row + p.at[l]);
+          } else {
+            const int32_t *grad = g.data() + L.w_off;
+            memcpy(row + p.at[l], grad, (size_t)4 * L.nw);
             for (int k = 0; k < L.nw; k++) {
-              const int32_t v = g[L.w_off + k];
+              const int32_t v = grad[k];
               if (v < -128 || v > 127) overflow8[t] |= 1u << l;
               if (v < -32768 || v > 32767) overflow[t] |= 1u << l;
-              o[k] = (uint8_t)(int8_t)v;
-            }
-          } else {
-            int16_t *o = (int16_t *)(row + p.at[l]);
-            for (int k = 0; k < L.nw; k++) {
-              const int32_t v = g[L.w_off + k];
-              if (v < -32768 || v > 32767) overflow[t] |= 1u << l;
-              o[k] = (int16_t)v;
             }
           }
         }
@@ -335,18 +326,51 @@ static int build(neb2t_scan *s, const int8_t *weights) {
     wide[i] = s->plan.kind[i] == WIDE;
     n8[i] = !wide[i] && A->l[i].kind != NEB2_LINEAR;
   }
-  for (;;) {
-    make_plan(A, wide, n8, &s->plan);
-    const FillStatus st = fill_rows(s, A, weights);
-    // Discard the provisional rows when any layer overflowed. The next pass uses
-    // the widened layout and recomputes those values before any device upload.
-    if (!(st.wide_layers | st.narrow8_layers)) break;
-    for (int i = 0; i < A->nlayers; i++) {
-      const unsigned flag = 1u << i;
-      if (st.wide_layers & flag) wide[i] = 1;
-      if ((st.wide_layers | st.narrow8_layers) & flag) n8[i] = 0;
+  int raw_wide[NEB2_MAX_LAYERS];
+  for (int i = 0; i < A->nlayers; ++i) raw_wide[i] = 1;
+  int raw_narrow[NEB2_MAX_LAYERS] = {0};
+  make_plan(A, raw_wide, raw_narrow, &s->plan);
+  const TPlan raw = s->plan;
+  if (s->n > s->rows.max_size() / (size_t)raw.row) return (int)cudaErrorInvalidValue;
+  const FillStatus st = fill_rows(s, A, weights);
+  for (int i = 0; i < A->nlayers; i++) {
+    const unsigned flag = 1u << i;
+    if (st.wide_layers & flag) wide[i] = 1;
+    if ((st.wide_layers | st.narrow8_layers) & flag) n8[i] = 0;
+  }
+  make_plan(A, wide, n8, &s->plan);
+  const TPlan &packed = s->plan;
+  // Every output layer segment and row is at most as large as its input.
+  // Compact in forward order so writes never overwrite unread gradients.
+  for (uint32_t i = 0; i < s->n; ++i) {
+    uint8_t *dst_row = s->rows.data() + (size_t)i * packed.row;
+    const uint8_t *src_row = s->rows.data() + (size_t)i * raw.row;
+    for (int l = 0; l < A->nlayers; ++l) {
+      const neb2_layer &layer = A->l[l];
+      uint8_t *dst = dst_row + packed.at[l];
+      const uint8_t *src = src_row + raw.at[l];
+      size_t bytes;
+      if (packed.kind[l] == LINEAR || packed.kind[l] == WIDE) {
+        bytes = packed.kind[l] == LINEAR ? (size_t)(layer.cout + layer.cin) : (size_t)layer.nw * 4;
+        memmove(dst, src, bytes);
+      } else {
+        const size_t size = packed.kind[l] == NARROW8 ? 1 : 2;
+        bytes = size * layer.nw;
+        for (int k = 0; k < layer.nw; ++k) {
+          int32_t value;
+          memcpy(&value, src + (size_t)k * 4, 4);
+          if (size == 1) dst[k] = (uint8_t)(int8_t)value;
+          else {
+            const int16_t narrow = (int16_t)value;
+            memcpy(dst + (size_t)k * 2, &narrow, 2);
+          }
+        }
+      }
+      const size_t aligned = (bytes + 3) & ~(size_t)3;
+      memset(dst + bytes, 0, aligned - bytes);
     }
   }
+  s->rows.resize((size_t)packed.row * s->n);
   if (s->rows.size() > UINT32_MAX) return (int)cudaErrorInvalidValue;
   TRY(cudaSetDevice(s->device));
   if (s->rows.size() != s->d_rows_bytes) {
