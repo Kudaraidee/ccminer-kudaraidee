@@ -37,7 +37,8 @@ architecture 1 (KEP1, 784 inputs, 26,000 weights)
 | `nebhash2_table_cuda.cu` / `.h` | CUDA kernel ที่ miner ใช้จริง: one block ต่อ nonce, ตาราง gradient ต่อตัวอย่าง, ใช้ `dp4a` สำหรับ linear layer |
 | `nebhash2_cuda.cu` / `.h` | kernel แบบ forward/backward ตรง ๆ รุ่นก่อนหน้า เก็บไว้สำหรับการเริ่มต้นและอ้างอิง miner ไม่ได้เรียกใช้ |
 | `shares.c` / `shares.h` | reference แบบพกพาของ PoW training-share รุ่นเดิม (v1) และค่าคงที่ร่วม (`NEB_NB=16`, `NEB_CLIP=256`, ...) |
-| `blake3_min.c`, `chacha8.c` | การทำงานของ BLAKE3 และ ChaCha8 แบบย่อที่ใช้ร่วมกันโดยทั้งสอง reference |
+| `cuda/blake3_device.cuh` | BLAKE3 กลางสำหรับ CUDA kernel ทั้งสองตัวและ C reference ฝั่ง host ใช้ chunk tree เต็มรูปแบบสำหรับ hash ชุดข้อมูลและโมเดล |
+| `chacha8.c` | ChaCha8 แบบพกพาที่ C reference ใช้ |
 | `LICENSE.NEB` | ใบอนุญาต Apache-2.0 สำหรับโค้ด reference ที่นำมารวมไว้ |
 
 `NEB_SCAN_CAP` (8192 nonces ต่อ `scan_run`) ช่วยให้หน้าต่างการสแกนอยู่ภายใน
@@ -74,7 +75,7 @@ block ตอนคอมไพล์
 
 ## ที่มาของโค้ด (Provenance)
 
-`nebhash2.{c,h}`, `shares.{c,h}`, `blake3_min.{c,h}`, `chacha8.{c,h}` และ table
+`nebhash2.{c,h}`, `shares.{c,h}`, `chacha8.{c,h}` และ table
 kernel ที่พัฒนาจาก reference ถูกนำมารวมไว้จากการใช้งานของ NEB ภายใต้
 Apache-2.0 (`LICENSE.NEB`) ส่วนสะพาน ccminer และ stratum ใช้ GPLv2 ของโปรเจกต์
 

@@ -9,12 +9,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include "nebhash2.h"
+#include "cuda/blake3_device.cuh"
 
 #define THREADS 256
 #define BATCH 512  // attempts per launch: sets the scratch size
 
 __device__ __forceinline__ uint32_t rotl32(uint32_t x, int n) { return (x << n) | (x >> (32 - n)); }
-__device__ __forceinline__ uint32_t rotr32(uint32_t x, int n) { return (x >> n) | (x << (32 - n)); }
 __device__ __forceinline__ int clampi(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 __device__ __forceinline__ int rsh(int x, int n) { return n == 0 ? x : (x + (1 << (n - 1))) >> n; }
 
@@ -33,38 +33,6 @@ static __device__ void chacha8_block0(const uint32_t key[8], uint32_t out[16]) {
     QR(0, 5, 10, 15) QR(1, 6, 11, 12) QR(2, 7, 8, 13) QR(3, 4, 9, 14)
   }
   for (int i = 0; i < 16; i++) out[i] = x[i] + s[i];
-}
-
-static __device__ __constant__ uint32_t kIV[8] = {0x6A09E667u, 0xBB67AE85u, 0x3C6EF372u, 0xA54FF53Au,
-                                           0x510E527Fu, 0x9B05688Cu, 0x1F83D9ABu, 0x5BE0CD19u};
-
-static __device__ __forceinline__ void g3(uint32_t *v, int a, int b, int c, int d, uint32_t mx, uint32_t my) {
-  v[a] = v[a] + v[b] + mx; v[d] = rotr32(v[d] ^ v[a], 16);
-  v[c] = v[c] + v[d];      v[b] = rotr32(v[b] ^ v[c], 12);
-  v[a] = v[a] + v[b] + my; v[d] = rotr32(v[d] ^ v[a], 8);
-  v[c] = v[c] + v[d];      v[b] = rotr32(v[b] ^ v[c], 7);
-}
-
-// One BLAKE3 compression with chunk counter 0 (single-chunk inputs only). flags: CHUNK_START 1, CHUNK_END 2, ROOT 8.
-static __device__ void b3_compress(const uint32_t cv[8], const uint32_t blk[16], uint32_t blen, uint32_t flags, uint32_t out[8]) {
-  const uint8_t perm[16] = {2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8};
-  uint32_t m[16], v[16];
-  for (int i = 0; i < 16; i++) m[i] = blk[i];
-  for (int i = 0; i < 8; i++) v[i] = cv[i];
-  v[8] = kIV[0]; v[9] = kIV[1]; v[10] = kIV[2]; v[11] = kIV[3];
-  v[12] = 0; v[13] = 0; v[14] = blen; v[15] = flags;
-  for (int r = 0; r < 7; r++) {
-    g3(v, 0, 4, 8, 12, m[0], m[1]);   g3(v, 1, 5, 9, 13, m[2], m[3]);
-    g3(v, 2, 6, 10, 14, m[4], m[5]);  g3(v, 3, 7, 11, 15, m[6], m[7]);
-    g3(v, 0, 5, 10, 15, m[8], m[9]);  g3(v, 1, 6, 11, 12, m[10], m[11]);
-    g3(v, 2, 7, 8, 13, m[12], m[13]); g3(v, 3, 4, 9, 14, m[14], m[15]);
-    if (r < 6) {
-      uint32_t t[16];
-      for (int i = 0; i < 16; i++) t[i] = m[perm[i]];
-      for (int i = 0; i < 16; i++) m[i] = t[i];
-    }
-  }
-  for (int i = 0; i < 8; i++) out[i] = v[i] ^ v[i + 8];
 }
 
 // The architecture and the scratch layout, in constant memory. Per sample: the input `in` (int8) and the routed error
@@ -122,12 +90,11 @@ __global__ void __launch_bounds__(THREADS) neb2_kernel(const int8_t *__restrict_
   for (int f = tid; f < A.nweights; f += THREADS) W[f] = wg[f];
   if (tid < 8) lanes[tid] = 0;
   if (tid == 0) {
-    uint32_t b0[16], b1[16], iv[8], cv[8], k[8], u[16];
-    for (int i = 0; i < 8; i++) iv[i] = kIV[i];
+    uint32_t b0[16], b1[16], cv[8], k[8], u[16];
     for (int i = 0; i < 16; i++) { b0[i] = h0[i]; b1[i] = i < 4 ? h0[16 + i] : 0u; }
     b1[3] = nonce;  // header word 19: the nonce
-    b3_compress(iv, b0, 64, 1u, cv);
-    b3_compress(cv, b1, 16, 2u | 8u, k);
+    blake3_compress(blake3_iv(), b0, 0, 64, BLAKE3_CHUNK_START, cv);
+    blake3_compress(cv, b1, 0, 16, BLAKE3_CHUNK_END | BLAKE3_ROOT, k);
     for (int i = 0; i < 8; i++) key[i] = k[i];
     chacha8_block0(k, u);
     for (int j = 0; j < NEB_NB; j++) {
@@ -319,9 +286,9 @@ __global__ void __launch_bounds__(THREADS) neb2_kernel(const int8_t *__restrict_
   __syncthreads();
   if (tid == 0) {
     // ticket = BLAKE3(digest || key): one 64-byte block, CHUNK_START | CHUNK_END | ROOT
-    uint32_t blk[16], iv[8], t[8];
-    for (int i = 0; i < 8; i++) { blk[i] = lanes[i]; blk[8 + i] = key[i]; iv[i] = kIV[i]; }
-    b3_compress(iv, blk, 64, 1u | 2u | 8u, t);
+    uint32_t blk[16], t[8];
+    for (int i = 0; i < 8; i++) { blk[i] = lanes[i]; blk[8 + i] = key[i]; }
+    blake3_compress(blake3_iv(), blk, 0, 64, BLAKE3_CHUNK_START | BLAKE3_CHUNK_END | BLAKE3_ROOT, t);
     bool ok = true;
     for (int k = 7; k >= 0; k--) {
       if (t[k] != bound[k]) { ok = t[k] < bound[k]; break; }

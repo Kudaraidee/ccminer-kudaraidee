@@ -346,7 +346,6 @@
     <ClCompile Include="algos\nebhash\nebhash2.c" />
     <ClCompile Include="algos\nebhash\shares.c" />
     <ClCompile Include="algos\nebhash\chacha8.c" />
-    <ClCompile Include="algos\nebhash\blake3_min.c" />
     <ClCompile Include="algos\kawpow\kawpow_core.cpp" />
     <ClCompile Include="algos\kawpow\ethash\ethash.cpp" />
     <ClCompile Include="algos\kawpow\ethash\progpow.cpp" />

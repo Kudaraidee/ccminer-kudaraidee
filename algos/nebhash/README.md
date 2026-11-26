@@ -37,7 +37,8 @@ slots; slot 0 is architecture 1 (KEP1, 784 inputs, 26,000 weights).
 | `nebhash2_table_cuda.cu` / `.h` | CUDA kernel actually used by the miner: one block per nonce, table of per-sample gradients, `dp4a` for the linear layers. |
 | `nebhash2_cuda.cu` / `.h` | Earlier direct forward/backward kernel, kept for bring-up and reference; the miner does not call it. |
 | `shares.c` / `shares.h` | Portable reference for the original (v1) training-share PoW and the shared constants (`NEB_NB=16`, `NEB_CLIP=256`, ...). |
-| `blake3_min.c`, `chacha8.c` | Small shared BLAKE3 and ChaCha8 implementations used by both references. |
+| `cuda/blake3_device.cuh` | Shared BLAKE3 for both CUDA kernels and the host reference. The host uses the full chunk tree for dataset and model hashes. |
+| `chacha8.c` | Portable ChaCha8 used by the C reference. |
 | `LICENSE.NEB` | Apache-2.0 licence for the vendored reference code. |
 
 `NEB_SCAN_CAP` (8192 nonces per `scan_run`) keeps a scan window inside a job's
@@ -76,7 +77,7 @@ requirement at compile time.
 
 ## Provenance
 
-`nebhash2.{c,h}`, `shares.{c,h}`, `blake3_min.{c,h}`, `chacha8.{c,h}` and the
+`nebhash2.{c,h}`, `shares.{c,h}`, `chacha8.{c,h}` and the
 reference-derived table kernel are vendored from the NEB implementation under
 Apache-2.0 (`LICENSE.NEB`). The ccminer bridge and stratum glue follow the
 project's GPLv2.

@@ -13,15 +13,17 @@
  * bytes, and a middle block carrying NO flags.
  *
  * blake3_256() is NOT valid for input > 1024 bytes; blake3_hash() (below) is the
- * full chunk tree, keyed or unkeyed. This is the tree's ONLY BLAKE3: decred,
- * hoohash, rinhash and pearlhash all use it, so a change to the shared core lands
- * on four consensus algos at once.
+ * full chunk tree, keyed or unkeyed. Decred, HooHash, RinHash, PearlHash
+ * and Nebhash use this implementation.
  */
 #ifndef CUDA_BLAKE3_DEVICE_CUH
 #define CUDA_BLAKE3_DEVICE_CUH
 
 #include <stdint.h>
 #include <stddef.h>
+#ifndef __cplusplus
+#include <stdbool.h>
+#endif
 
 #ifdef __CUDACC__
 #define B3_HD __host__ __device__
