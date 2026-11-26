@@ -185,3 +185,25 @@ coverage across the two versions. The new kernel passed the 384-nonce
 differential against the C reference for both KEP1 and RET2, using five
 weight patterns per architecture, five rank boundaries and eight exact
 tickets per case.
+
+### Batched convolution-width fallback
+
+The builder records all convolution layers that overflow int8 or int16
+during the first pass over the dataset. It widens those layers together
+and rebuilds the table once before uploading it to CUDA. An int8 layer
+whose gradients exceed the int16 range goes directly to int32. Models
+whose gradients fit the selected widths finish in one pass.
+
+Live runs on the GTX 1050 Ti with the official dataset accepted 41/41
+shares on Yiimp and 8/8 on MeshPool. The table below measures subsequent
+local A/B builds of one model captured from each pool, with two
+repetitions per builder. Time includes table creation and upload.
+
+| Captured model | Dataset rows | Passes, old → new | Mean time, old → new | Time saved |
+| :-- | --: | --: | --: | --: |
+| Yiimp, slot 0 | 13,404 | 4 → 2 | 18.42 s → 10.11 s | 45.1% |
+| MeshPool, slot 1 | 7,089 | 5 → 2 | 11.18 s → 5.66 s | 49.4% |
+
+Each replay produced the same table and layout hash, and the same set of
+hits in a 384-nonce scan. The measurements quantify the wait for a new model
+table. CUDA scan throughput is measured separately.

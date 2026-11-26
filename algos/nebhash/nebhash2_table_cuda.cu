@@ -272,9 +272,9 @@ static void make_plan(const neb2_arch *A, const int *wide, const int *narrow8, T
   p->shared_words = sh;
 }
 
-// Fills the rows of every sample for the weights. Returns the layers whose values do not fit their compact
-// representation: 8 bits for an int8 convolution layer, 16 bits for an int16 convolution layer.
-struct FillStatus { int wide_layer, narrow8_layer; };
+// Track all convolution layers that need a wider representation. Check the int16 range
+// even when packing int8 so one rebuild can choose the final width for every layer.
+struct FillStatus { unsigned wide_layers, narrow8_layers; };
 
 static FillStatus fill_rows(neb2t_scan *s, const neb2_arch *A, const int8_t *weights) {
   neb2_model *m = (neb2_model *)calloc(1, sizeof *m);
@@ -284,7 +284,7 @@ static FillStatus fill_rows(neb2t_scan *s, const neb2_arch *A, const int8_t *wei
   s->rows.assign((size_t)p.row * s->n, 0);
   unsigned nt = std::thread::hardware_concurrency();
   if (nt == 0) nt = 4;
-  std::vector<int> overflow(nt, -1), overflow8(nt, -1);
+  std::vector<unsigned> overflow(nt), overflow8(nt);
   std::vector<std::thread> th;
   for (unsigned t = 0; t < nt; t++)
     th.emplace_back([&, t] {
@@ -305,14 +305,15 @@ static FillStatus fill_rows(neb2t_scan *s, const neb2_arch *A, const int8_t *wei
             uint8_t *o = (uint8_t *)(row + p.at[l]);
             for (int k = 0; k < L.nw; k++) {
               const int32_t v = g[L.w_off + k];
-              if (v < -128 || v > 127) { overflow8[t] = l; break; }
+              if (v < -128 || v > 127) overflow8[t] |= 1u << l;
+              if (v < -32768 || v > 32767) overflow[t] |= 1u << l;
               o[k] = (uint8_t)(int8_t)v;
             }
           } else {
             int16_t *o = (int16_t *)(row + p.at[l]);
             for (int k = 0; k < L.nw; k++) {
               const int32_t v = g[L.w_off + k];
-              if (v < -32768 || v > 32767) overflow[t] = l;
+              if (v < -32768 || v > 32767) overflow[t] |= 1u << l;
               o[k] = (int16_t)v;
             }
           }
@@ -321,9 +322,9 @@ static FillStatus fill_rows(neb2t_scan *s, const neb2_arch *A, const int8_t *wei
     });
   for (auto &t : th) t.join();
   free(m);
-  FillStatus st = {-1, -1};
-  for (int o : overflow) if (o >= 0) st.wide_layer = o;
-  for (int o : overflow8) if (o >= 0) st.narrow8_layer = o;
+  FillStatus st = {0, 0};
+  for (unsigned o : overflow) st.wide_layers |= o;
+  for (unsigned o : overflow8) st.narrow8_layers |= o;
   return st;
 }
 
@@ -337,9 +338,14 @@ static int build(neb2t_scan *s, const int8_t *weights) {
   for (;;) {
     make_plan(A, wide, n8, &s->plan);
     const FillStatus st = fill_rows(s, A, weights);
-    if (st.narrow8_layer >= 0) { n8[st.narrow8_layer] = 0; continue; }
-    if (st.wide_layer >= 0) { wide[st.wide_layer] = 1; n8[st.wide_layer] = 0; continue; }
-    break;
+    // Discard the provisional rows when any layer overflowed. The next pass uses
+    // the widened layout and recomputes those values before any device upload.
+    if (!(st.wide_layers | st.narrow8_layers)) break;
+    for (int i = 0; i < A->nlayers; i++) {
+      const unsigned flag = 1u << i;
+      if (st.wide_layers & flag) wide[i] = 1;
+      if ((st.wide_layers | st.narrow8_layers) & flag) n8[i] = 0;
+    }
   }
   if (s->rows.size() > UINT32_MAX) return (int)cudaErrorInvalidValue;
   TRY(cudaSetDevice(s->device));
