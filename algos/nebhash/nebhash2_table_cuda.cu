@@ -15,7 +15,7 @@
 #include "nebhash2.h"
 
 #ifndef THREADS
-#define THREADS 256
+#define THREADS 128
 #endif
 #define CHUNK 65536u  // attempts per launch
 
@@ -117,6 +117,11 @@ __global__ void __launch_bounds__(THREADS) table_kernel(const uint8_t *__restric
     for (int j = 0; j < NEB_NB; j++) idx[j] = (uint32_t)(((unsigned long long)u[j] * n) >> 32);
   }
   __syncthreads();
+  // Row offsets fit in 32 bits for the official dataset (build() rejects a
+  // larger table), which avoids a 64-bit multiply on every row byte load.
+  uint32_t rb[NEB_NB];
+#pragma unroll
+  for (int b = 0; b < NEB_NB; b++) rb[b] = idx[b] * (uint32_t)P.row;
   // Only the cout error words need staging. The cin input words are loaded once
   // per input element and reused across all outputs, so shared memory stays tiny
   // and many more blocks fit on an SM. The row bytes and their packing are the
@@ -127,7 +132,7 @@ __global__ void __launch_bounds__(THREADS) table_kernel(const uint8_t *__restric
       for (int w = 0; w < 4; w++) {
         uint32_t v = 0;
         for (int b = 0; b < 4; b++)
-          v |= (uint32_t)rows[(size_t)idx[4 * w + b] * P.row + P.at[i] + o] << (8 * b);
+          v |= (uint32_t)__ldg(&rows[rb[4 * w + b] + P.at[i] + o]) << (8 * b);
         S[P.sh_d[i] + 4 * o + w] = (int32_t)v;
       }
     }
@@ -144,7 +149,7 @@ __global__ void __launch_bounds__(THREADS) table_kernel(const uint8_t *__restric
         for (int w = 0; w < 4; w++) {
           uint32_t v = 0;
           for (int b = 0; b < 4; b++)
-            v |= (uint32_t)rows[(size_t)idx[4 * w + b] * P.row + xat + q] << (8 * b);
+            v |= (uint32_t)__ldg(&rows[rb[4 * w + b] + xat + q]) << (8 * b);
           x[w] = (int32_t)v;
         }
         for (int o = 0; o < cout; o++) {
@@ -166,9 +171,9 @@ __global__ void __launch_bounds__(THREADS) table_kernel(const uint8_t *__restric
       for (int f = tid; f < P.nw[i]; f += THREADS) {
         int G = 0;
         if (P.kind[i] == NARROW) {
-          for (int b = 0; b < NEB_NB; b++) G += *(const int16_t *)(rows + (size_t)idx[b] * P.row + P.at[i] + 2 * f);
+          for (int b = 0; b < NEB_NB; b++) G += __ldg((const int16_t *)(rows + rb[b] + P.at[i] + 2 * f));
         } else {
-          for (int b = 0; b < NEB_NB; b++) G += *(const int32_t *)(rows + (size_t)idx[b] * P.row + P.at[i] + 4 * f);
+          for (int b = 0; b < NEB_NB; b++) G += __ldg((const int32_t *)(rows + rb[b] + P.at[i] + 4 * f));
         }
         const int cg = G < -CLIPV ? -CLIPV : (G > CLIPV ? CLIPV : G);
         lane[f & 7] += (uint32_t)cg ^ ((uint32_t)f + base);
@@ -298,6 +303,7 @@ static int build(neb2t_scan *s, const int8_t *weights) {
     if (o < 0) break;
     wide[o] = 1;
   }
+  if (s->rows.size() > UINT32_MAX) return (int)cudaErrorInvalidValue;
   TRY(cudaSetDevice(s->device));
   if (s->rows.size() != s->d_rows_bytes) {
     cudaFree(s->d_rows);

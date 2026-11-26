@@ -1,5 +1,7 @@
 # Nebhash (NEB, `neb-pool/1`) — `-a nebhash` / `-a neb`
 
+[ฉบับภาษาไทย](README.th.md)
+
 Integer-only proof of work used by NEB. One attempt derives a ChaCha8 key from
 an 80-byte header with BLAKE3, picks 16 samples from a fixed dataset, evaluates
 the training gradient of a convolutional model on those samples, clips and
@@ -44,9 +46,14 @@ lifetime while amortising host/device synchronisation; the hit list is
 
 For a linear layer the kernel stages only the `4 × cout` error words in shared
 memory and reloads the `4 × cin` input words directly from the table rows once
-per input element. The eight lane accumulators are reduced per warp and then
-summed once by thread 0, instead of 256 shared-memory atomics per lane. All
-sums are modulo `2^32`, so changing the order does not change the ticket.
+per input element. The 16 row indices are converted to 32-bit row offsets once
+per block (the builder rejects a table larger than 4 GiB), which removes a
+64-bit multiply from every row byte load. Table rows (linear factors and
+convolution weights) are read with `__ldg` through the read-only cache, and
+`THREADS` is 128 so twice as many blocks fit on an SM at the same thread
+occupancy. The eight lane accumulators are reduced per warp and then summed
+once by thread 0, instead of 256 shared-memory atomics per lane. All sums are
+modulo `2^32`, so changing the order does not change the ticket.
 
 ## Provenance
 
@@ -98,13 +105,15 @@ verification stays enabled; use `--cert` only to supply a custom CA bundle.
 
 | GPU | Arch | Rate | Notes |
 | :-- | :-- | :-- | :-- |
-| GTX 1050 Ti | sm_61 | ~0.34 MH/s avg (~0.24–0.39) | 2026-11-26, live pool, official dataset, `sm_61` warp-reduction kernel, 5-minute run: 1/1 share accepted, no reject. Earlier runs also accepted every share, with and without `sd=`. |
+| GTX 1050 Ti | sm_61 | ~0.43 MH/s avg (~0.25–0.55) | 2026-11-26, live pool, official dataset, `sm_61` kernel. 5-minute run: 432.33 kH/s, 1/1 share accepted, no reject. A 150-second A/B run averaged 493.47 kH/s. Earlier runs also accepted every share, with and without `sd=`. |
 
 Lowering the linear-layer shared-memory footprint from `4 × (cout + cin)` to
 `4 × cout` words kept every ticket identical in the differential test but did
 not change the rate materially. A/B runs of the warp reduction versus the old
-shared-atomic reduction showed about 3% higher throughput on the same card.
-Replacing byte loads with 32-bit transposed loads, loading two convolution
-weights per iteration, and raising `THREADS` to 512 also passed the differential
-test but measured slower (~0.22–0.24 MH/s), so those variants were discarded.
+shared-atomic reduction showed about 3% higher throughput. Precomputing 32-bit
+row offsets, using `__ldg` for the table rows, and dropping `THREADS` from 256
+to 128 raised the 5-minute average from ~0.34 to ~0.41–0.43 MH/s. Variants that
+passed the differential test but were discarded as slower or less stable:
+aligned 32-bit transposed staging, two convolution weights per load, branchless
+`dp4a`, 512 threads, and 64 threads.
 

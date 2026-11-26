@@ -242,7 +242,8 @@ counts and logs a real solved block instead of inferring one from share
 difficulty.
 
 The reference implementation and CUDA kernel live in `algos/nebhash/` under
-Apache-2.0 (`LICENSE.NEB`).
+Apache-2.0 (`LICENSE.NEB`). Full documentation: [English](algos/nebhash/README.md),
+[ภาษาไทย](algos/nebhash/README.th.md).
 
 Monitoring and control
 ----------------------
