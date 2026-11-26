@@ -2503,6 +2503,36 @@ static bool stratum_unknown_method(struct stratum_ctx *sctx, json_t *id)
 	return ret;
 }
 
+// neb-pool/1 extension: only sent after the node accepted a block candidate.
+// mining.submit is answered earlier, so this is the first reliable solve.
+// Params [job_id, nonce?]; either may arrive as a JSON string or a number.
+static bool nebhash_stratum_block(struct stratum_ctx *sctx, json_t *params)
+{
+	json_t *jjob = json_array_get(params, 0);
+	json_t *jnonce = json_array_get(params, 1);
+	char job[64], nonce[64];
+
+	if (!jjob)
+		return false;
+	if (json_is_string(jjob))
+		snprintf(job, sizeof(job), "%s", json_string_value(jjob));
+	else if (json_is_integer(jjob))
+		snprintf(job, sizeof(job), "%" PRId64, json_integer_value(jjob));
+	else
+		return false;
+
+	nonce[0] = '\0';
+	if (jnonce) {
+		if (json_is_string(jnonce))
+			snprintf(nonce, sizeof(nonce), "%s", json_string_value(jnonce));
+		else if (json_is_integer(jnonce))
+			snprintf(nonce, sizeof(nonce), "%" PRId64, json_integer_value(jnonce));
+	}
+
+	stratum_block_accepted(sctx, job, nonce);
+	return true;
+}
+
 bool stratum_handle_method(struct stratum_ctx *sctx, const char *s)
 {
 	json_t *val, *id, *params;
@@ -2551,6 +2581,12 @@ bool stratum_handle_method(struct stratum_ctx *sctx, const char *s)
 	if (!strcasecmp(method, "mining.set_model")) {
 		if (opt_algo == ALGO_NEBHASH) {
 			ret = nebhash_stratum_set_model(sctx, params);
+			goto out;
+		}
+	}
+	if (!strcasecmp(method, "mining.block")) {
+		if (opt_algo == ALGO_NEBHASH) {
+			ret = nebhash_stratum_block(sctx, params);
 			goto out;
 		}
 	}

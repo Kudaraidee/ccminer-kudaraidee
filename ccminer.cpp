@@ -1053,6 +1053,33 @@ int share_result(int result, int pooln, double sharediff, const char *reason)
 	return 1;
 }
 
+/* neb-pool/1 answers mining.submit before the node has validated the candidate,
+ * so a later mining.block notification is the first reliable proof of a real
+ * solve. Keep it independent of net_diff, which nebhash leaves at zero. */
+void stratum_block_accepted(struct stratum_ctx *sctx, const char *job_id,
+                            const char *nonce)
+{
+	struct pool_infos *p = &pools[sctx->pooln];
+	char detail[80], solved[32];
+	size_t n;
+
+	p->solved_count++;
+	snprintf(solved, sizeof(solved), " solved: %u", p->solved_count);
+
+	detail[0] = '\0';
+	if (job_id && *job_id)
+		snprintf(detail, sizeof(detail), " job %s", job_id);
+	if (nonce && *nonce) {
+		n = strlen(detail);
+		snprintf(detail + n, sizeof(detail) - n, "%s nonce %s",
+		         n ? "," : "", nonce);
+	}
+
+	applog(LOG_NOTICE, "%s%s%s%s",
+	       use_colors ? CL_GRN YAY : "(" YAY ")", detail, solved,
+	       use_colors ? CL_N : ")");
+}
+
 /* Allocate the next submit id; once per submitted share. Non-static because
  * xmr-rpc.cpp and equi-stratum.cpp build their own mining.submit. */
 uint32_t submit_id_next(void)

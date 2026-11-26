@@ -236,7 +236,10 @@ release page (verify it with `SHA256SUMS`), place it next to the binary or pass
 pool's `dataset_hash` with the local file at subscribe time and refuses to mine
 on a mismatch. It accepts `mining.set_target`, `mining.set_model` and the
 object-form `mining.notify`, and re-checks GPU hits against the portable C
-reference before submitting `mining.submit`.
+reference before submitting `mining.submit`. A pool may also send a
+`mining.block` notification after its node accepts a candidate; ccminer then
+counts and logs a real solved block instead of inferring one from share
+difficulty.
 
 The reference implementation and CUDA kernel live in `algos/nebhash/` under
 Apache-2.0 (`LICENSE.NEB`).
