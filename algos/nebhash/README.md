@@ -55,6 +55,15 @@ occupancy. The eight lane accumulators are reduced per warp and then summed
 once by thread 0, instead of 256 shared-memory atomics per lane. All sums are
 modulo `2^32`, so changing the order does not change the ticket.
 
+The scan handle caches the BLAKE3 chaining value for the first 64 bytes
+of the header and recomputes it when those bytes change. Each nonce still
+uses the final 16 bytes of the header to finish the key.
+
+For each linear layer, the kernel skips outputs whose error factors are zero
+across all 16 selected samples. The digest starts with the contributions of
+an all-zero linear gradient and adds the difference for each active output.
+These additions use modulo `2^32` and preserve the ticket.
+
 ## Provenance
 
 `nebhash2.{c,h}`, `shares.{c,h}`, `blake3_min.{c,h}`, `chacha8.{c,h}` and the
@@ -124,3 +133,22 @@ aligned 32-bit transposed staging, two convolution weights per load, branchless
 A `__dp2a`-based packed int16 variant was also discarded because it failed the
 exact-ticket differential.
 
+### Combined kernel on live Yiimp
+
+The GTX 1050 Ti (`sm_61`) ran each variant for 90 seconds with the official
+dataset, the same 32-byte share target (`d=0.0002`), and 8,192 nonces per
+batch. Scan rate uses time spent inside the CUDA scan call. Median batch
+time measures how long that call took to return.
+
+| Variant | Scan rate | Median batch time | Shares accepted |
+| :-- | --: | --: | --: |
+| BLAKE3 cache only | 577.97 kH/s | 14.32 ms | 8/8 |
+| Skip zero linear gradients only | 647.91 kH/s | 12.42 ms | 22/22 |
+| Both optimizations | 651.25 kH/s | 12.16 ms | 7/8 |
+
+The combined run spent 18.5 seconds scanning, while the zero-gradient-only
+run spent 57.4 seconds scanning. Yiimp returned code 21 (`Job not found or
+past its expiry`) for one combined-run share during a job change. Skipping
+zero gradients accounted for most of the observed speedup. The 0.5%
+difference between the combined and zero-gradient-only runs needs more
+repetitions to establish a consistent gain.

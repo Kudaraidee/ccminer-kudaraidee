@@ -79,6 +79,7 @@ struct TPlan {
   int at[NEB2_MAX_LAYERS];                             // offset of the layer in a row
   int sh_d[NEB2_MAX_LAYERS], sh_in[NEB2_MAX_LAYERS];   // linear: error words in shared; sh_in is unused (rows are reloaded)
   int row, shared_words;
+  uint32_t linear_zero[8];
 };
 static __device__ __constant__ TPlan P;
 
@@ -95,22 +96,27 @@ __device__ __forceinline__ uint32_t warp_sum(uint32_t v)
   return v;
 }
 
+__global__ void header_prefix(const uint32_t *header, uint32_t *cv) {
+  uint32_t iv[8], first[16];
+  for (int i = 0; i < 8; i++) iv[i] = kIV[i];
+  for (int i = 0; i < 16; i++) first[i] = header[i];
+  b3_compress(iv, first, 64, 1u, cv);
+}
+
 __global__ void __launch_bounds__(THREADS) table_kernel(const uint8_t *__restrict__ rows, uint32_t n,
                                                         const uint32_t *__restrict__ h0, uint32_t start,
                                                         const uint32_t *__restrict__ bound, uint32_t *hits,
-                                                        uint32_t max_hits) {
+                                                        uint32_t max_hits, const uint32_t *__restrict__ cv) {
   extern __shared__ int32_t S[];  // per linear layer: cout x 4 words of errors (inputs reloaded from rows)
   __shared__ uint32_t key[8], idx[NEB_NB], lanes[8];
   __shared__ uint32_t wsum[8][THREADS / 32];
+  __shared__ int active[NEB2_MAX_LAYERS][32], active_count[NEB2_MAX_LAYERS];
   const int tid = threadIdx.x;
   const uint32_t nonce = start + blockIdx.x;
   if (tid < 8) lanes[tid] = 0;
   if (tid == 0) {
-    uint32_t b0[16], b1[16], iv[8], cv[8], k[8], u[16];
-    for (int i = 0; i < 8; i++) iv[i] = kIV[i];
-    for (int i = 0; i < 16; i++) { b0[i] = h0[i]; b1[i] = i < 4 ? h0[16 + i] : 0u; }
-    b1[3] = nonce;
-    b3_compress(iv, b0, 64, 1u, cv);
+    uint32_t b1[16] = { h0[16], h0[17], h0[18], nonce };
+    uint32_t k[8], u[16];
     b3_compress(cv, b1, 16, 2u | 8u, k);
     for (int i = 0; i < 8; i++) key[i] = k[i];
     chacha8_block0(k, u);
@@ -138,6 +144,15 @@ __global__ void __launch_bounds__(THREADS) table_kernel(const uint8_t *__restric
     }
   }
   __syncthreads();
+  if (tid < P.nlayers && P.kind[tid] == LINEAR) {
+    int count = 0;
+    for (int o = 0; o < P.cout[tid]; o++) {
+      const int32_t *d = S + P.sh_d[tid] + 4 * o;
+      if ((d[0] | d[1] | d[2] | d[3]) != 0) active[tid][count++] = o;
+    }
+    active_count[tid] = count;
+  }
+  __syncthreads();
   uint32_t lane[8] = {0, 0, 0, 0, 0, 0, 0, 0};
   for (int i = 0; i < P.nlayers; i++) {
     const uint32_t base = 7919u * (uint32_t)(i + 1);
@@ -152,11 +167,12 @@ __global__ void __launch_bounds__(THREADS) table_kernel(const uint8_t *__restric
             v |= (uint32_t)__ldg(&rows[rb[4 * w + b] + xat + q]) << (8 * b);
           x[w] = (int32_t)v;
         }
-        for (int o = 0; o < cout; o++) {
+        for (int j = 0; j < active_count[i]; j++) {
+          const int o = active[i][j];
           const int32_t *d = S + P.sh_d[i] + 4 * o;
           const int32_t d0 = d[0], d1 = d[1], d2 = d[2], d3 = d[3];
           int G = 0;
-          if ((d0 | d1 | d2 | d3) != 0) {
+          {
             G = __dp4a(d0, x[0], G);
             G = __dp4a(d1, x[1], G);
             G = __dp4a(d2, x[2], G);
@@ -164,7 +180,7 @@ __global__ void __launch_bounds__(THREADS) table_kernel(const uint8_t *__restric
           }
           const uint32_t f = (uint32_t)(o * cin + q);
           const int cg = G < -CLIPV ? -CLIPV : (G > CLIPV ? CLIPV : G);
-          lane[f & 7] += (uint32_t)cg ^ (f + base);
+          lane[f & 7] += ((uint32_t)cg ^ (f + base)) - (f + base);
         }
       }
     } else {
@@ -225,7 +241,7 @@ __global__ void __launch_bounds__(THREADS) table_kernel(const uint8_t *__restric
       for (int k = 0; k < 8; k++) {
         uint32_t v = 0;
         for (int w = 0; w < THREADS / 32; w++) v += wsum[k][w];
-        lanes[k] = v;
+        lanes[k] = v + P.linear_zero[k];
       }
     }
   }
@@ -251,7 +267,9 @@ struct neb2t_scan {
   std::vector<uint8_t> values, labels, rows;
   uint8_t *d_rows;
   size_t d_rows_bytes;
-  uint32_t *d_header, *d_bound, *d_hits;
+  uint32_t *d_header, *d_bound, *d_hits, *d_cv;
+  uint8_t cached_prefix[64];
+  bool prefix_ready;
 };
 
 #define TRY(x) do { const cudaError_t e_ = (x); if (e_ != cudaSuccess) return (int)e_; } while (0)
@@ -268,6 +286,8 @@ static void make_plan(const neb2_arch *A, const int *wide, const int *narrow8, T
     p->at[i] = at;
     if (L.kind == NEB2_LINEAR) {
       p->kind[i] = LINEAR;
+      for (int f = 0; f < L.nw; f++)
+        p->linear_zero[f & 7] += (uint32_t)f + 7919u * (uint32_t)(i + 1);
       at += L.cout + L.cin;
       p->sh_d[i] = sh; sh += 4 * L.cout;
       p->sh_in[i] = sh; // unused: input words are reloaded per q, not staged
@@ -381,6 +401,7 @@ int neb2t_scan_open(int device, int arch, const uint8_t *values, const uint8_t *
   memset(&s->plan, 0, sizeof s->plan);
   cudaError_t e = cudaSetDevice(device);
   if (e == cudaSuccess) e = cudaMalloc(&s->d_header, 80);
+  if (e == cudaSuccess) e = cudaMalloc(&s->d_cv, 32);
   if (e == cudaSuccess) e = cudaMalloc(&s->d_bound, 32);
   if (e == cudaSuccess) e = cudaMalloc(&s->d_hits, ((size_t)max_hits + 1) * 4);
   int st = (int)e;
@@ -401,12 +422,18 @@ int neb2t_scan_run(neb2t_scan *s, const uint8_t *header, uint32_t start, uint32_
   TRY(cudaSetDevice(s->device));
   TRY(cudaMemcpyToSymbol(P, &s->plan, sizeof s->plan));
   TRY(cudaMemcpy(s->d_header, header, 80, cudaMemcpyHostToDevice));
+  if (!s->prefix_ready || memcmp(s->cached_prefix, header, 64) != 0) {
+    header_prefix<<<1, 1>>>(s->d_header, s->d_cv);
+    TRY(cudaGetLastError());
+    memcpy(s->cached_prefix, header, 64);
+    s->prefix_ready = true;
+  }
   TRY(cudaMemcpy(s->d_bound, bound, 32, cudaMemcpyHostToDevice));
   TRY(cudaMemset(s->d_hits, 0, 4));
   for (uint32_t done = 0; done < count; done += CHUNK) {
     const uint32_t part = count - done < CHUNK ? count - done : CHUNK;
     table_kernel<<<part, THREADS, (size_t)s->plan.shared_words * 4>>>(s->d_rows, s->n, s->d_header, start + done, s->d_bound,
-                                                                      s->d_hits, s->max_hits);
+                                                                      s->d_hits, s->max_hits, s->d_cv);
     TRY(cudaGetLastError());
   }
   uint32_t found = 0;
@@ -422,6 +449,7 @@ void neb2t_scan_close(neb2t_scan *s) {
   cudaSetDevice(s->device);
   cudaFree(s->d_rows);
   cudaFree(s->d_header);
+  cudaFree(s->d_cv);
   cudaFree(s->d_bound);
   cudaFree(s->d_hits);
   delete s;
