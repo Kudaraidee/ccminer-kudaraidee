@@ -64,6 +64,16 @@ across all 16 selected samples. The digest starts with the contributions of
 an all-zero linear gradient and adds the difference for each active output.
 These additions use modulo `2^32` and preserve the ticket.
 
+For KEP1 and RET2, both the linear layer's input width (`cin`) and the
+CUDA block size are multiples of eight. With flattened weight index
+`f = o * cin + q` and input index `q` advancing from `threadIdx.x` in
+block-sized steps, `f & 7` always equals `threadIdx.x & 7` for that thread.
+The thread accumulates its linear contributions in one unsigned 32-bit
+sum and adds it to that digest lane just before the warp reduction.
+Convolution contributions keep their per-lane accumulation. The scan
+checks the input-width requirement per architecture and the block-size
+requirement at compile time.
+
 ## Provenance
 
 `nebhash2.{c,h}`, `shares.{c,h}`, `blake3_min.{c,h}`, `chacha8.{c,h}` and the
@@ -152,3 +162,25 @@ past its expiry`) for one combined-run share during a job change. Skipping
 zero gradients accounted for most of the observed speedup. The 0.5%
 difference between the combined and zero-gradient-only runs needs more
 repetitions to establish a consistent gain.
+
+### Per-thread linear accumulation on live Yiimp
+
+Compared with `15294b5`, the new kernel reached 741.42 kH/s during CUDA
+scans on the GTX 1050 Ti (`sm_61`), up 17.6%. Both versions used the
+official dataset, 8,192 nonces per batch, and the same 32-byte share target
+(`d=0.0002`). The order was baseline, new kernel, new kernel, baseline.
+Each round stopped at the third distinct height announced by Yiimp.
+Repeated notifications at the same height were counted once.
+
+| Kernel | Scan rate | Median batch time | Sent | Accepted | No reply |
+| :-- | --: | --: | --: | --: | --: |
+| `15294b5` baseline | 630.68 kH/s | 12.78 ms | 59 | 31 | 28 |
+| Per-thread linear accumulation | 741.42 kH/s | 10.68 ms | 33 | 33 | 0 |
+
+The two new-kernel rounds measured 737.67 and 743.24 kH/s. Connection
+resets occurred in the baseline rounds, and 28 baseline submissions
+have no recorded reply. Accepted-share counts therefore have different
+coverage across the two versions. The new kernel passed the 384-nonce
+differential against the C reference for both KEP1 and RET2, using five
+weight patterns per architecture, five rank boundaries and eight exact
+tickets per case.

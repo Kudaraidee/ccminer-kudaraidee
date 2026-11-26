@@ -153,6 +153,7 @@ __global__ void __launch_bounds__(THREADS) table_kernel(const uint8_t *__restric
     active_count[tid] = count;
   }
   __syncthreads();
+  uint32_t linear_sum = 0;
   uint32_t lane[8] = {0, 0, 0, 0, 0, 0, 0, 0};
   for (int i = 0; i < P.nlayers; i++) {
     const uint32_t base = 7919u * (uint32_t)(i + 1);
@@ -180,7 +181,7 @@ __global__ void __launch_bounds__(THREADS) table_kernel(const uint8_t *__restric
           }
           const uint32_t f = (uint32_t)(o * cin + q);
           const int cg = G < -CLIPV ? -CLIPV : (G > CLIPV ? CLIPV : G);
-          lane[f & 7] += ((uint32_t)cg ^ (f + base)) - (f + base);
+          linear_sum += ((uint32_t)cg ^ (f + base)) - (f + base);
         }
       }
     } else {
@@ -232,8 +233,10 @@ __global__ void __launch_bounds__(THREADS) table_kernel(const uint8_t *__restric
   // Addition is modulo 2^32, so changing the accumulation order is safe.
   {
     const int warp = tid >> 5;
+    #pragma unroll
     for (int k = 0; k < 8; k++) {
-      const uint32_t v = warp_sum(lane[k]);
+      const uint32_t sum = lane[k] + ((tid & 7) == k ? linear_sum : 0u);
+      const uint32_t v = warp_sum(sum);
       if (!(tid & 31)) wsum[k][warp] = v;
     }
     __syncthreads();
@@ -387,6 +390,9 @@ int neb2t_scan_open(int device, int arch, const uint8_t *values, const uint8_t *
                    uint32_t capacity, uint32_t max_hits, neb2t_scan **out) {
   const neb2_arch *A = neb2_arch_get(arch);
   if (!A || n == 0 || capacity == 0 || max_hits == 0) return (int)cudaErrorInvalidValue;
+  static_assert(THREADS % 8 == 0, "linear lane requires groups of 8 threads");
+  for (int i = 0; i < A->nlayers; i++)
+    if (A->l[i].kind == NEB2_LINEAR && A->l[i].cin % 8 != 0) return (int)cudaErrorInvalidValue;
   neb2t_scan *s = new neb2t_scan();
   s->device = device;
   s->arch = arch;
