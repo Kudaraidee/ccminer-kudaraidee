@@ -77,7 +77,7 @@ struct TPlan {
   int nlayers;
   int kind[NEB2_MAX_LAYERS], nw[NEB2_MAX_LAYERS], cin[NEB2_MAX_LAYERS], cout[NEB2_MAX_LAYERS];
   int at[NEB2_MAX_LAYERS];                             // offset of the layer in a row
-  int sh_d[NEB2_MAX_LAYERS], sh_in[NEB2_MAX_LAYERS];   // linear: the transposed factors in shared memory, in words
+  int sh_d[NEB2_MAX_LAYERS], sh_in[NEB2_MAX_LAYERS];   // linear: error words in shared; sh_in is unused (rows are reloaded)
   int row, shared_words;
 };
 static __device__ __constant__ TPlan P;
@@ -92,7 +92,7 @@ __global__ void __launch_bounds__(THREADS) table_kernel(const uint8_t *__restric
                                                         const uint32_t *__restrict__ h0, uint32_t start,
                                                         const uint32_t *__restrict__ bound, uint32_t *hits,
                                                         uint32_t max_hits) {
-  extern __shared__ int32_t S[];  // per linear layer: cout x 4 words of errors, cin x 4 words of inputs
+  extern __shared__ int32_t S[];  // per linear layer: cout x 4 words of errors (inputs reloaded from rows)
   __shared__ uint32_t key[8], idx[NEB_NB], lanes[8];
   const int tid = threadIdx.x;
   const uint32_t nonce = start + blockIdx.x;
@@ -109,17 +109,18 @@ __global__ void __launch_bounds__(THREADS) table_kernel(const uint8_t *__restric
     for (int j = 0; j < NEB_NB; j++) idx[j] = (uint32_t)(((unsigned long long)u[j] * n) >> 32);
   }
   __syncthreads();
-  // gather the factors of the linear layers: element e of the 16 rows becomes 16 bytes, sample b in byte b
+  // Only the cout error words need staging. The cin input words are loaded once
+  // per input element and reused across all outputs, so shared memory stays tiny
+  // and many more blocks fit on an SM. The row bytes and their packing are the
+  // same as before; only the loop order changes, and the lane sums are mod 2^32.
   for (int i = 0; i < P.nlayers; i++) {
     if (P.kind[i] != LINEAR) continue;
-    const int total = P.cout[i] + P.cin[i];
-    for (int e = tid; e < total; e += THREADS) {
-      int32_t *dst = e < P.cout[i] ? S + P.sh_d[i] + 4 * e : S + P.sh_in[i] + 4 * (e - P.cout[i]);
+    for (int o = tid; o < P.cout[i]; o += THREADS) {
       for (int w = 0; w < 4; w++) {
         uint32_t v = 0;
         for (int b = 0; b < 4; b++)
-          v |= (uint32_t)rows[(size_t)idx[4 * w + b] * P.row + P.at[i] + e] << (8 * b);
-        dst[w] = (int32_t)v;
+          v |= (uint32_t)rows[(size_t)idx[4 * w + b] * P.row + P.at[i] + o] << (8 * b);
+        S[P.sh_d[i] + 4 * o + w] = (int32_t)v;
       }
     }
   }
@@ -129,20 +130,26 @@ __global__ void __launch_bounds__(THREADS) table_kernel(const uint8_t *__restric
     const uint32_t base = 7919u * (uint32_t)(i + 1);
     if (P.kind[i] == LINEAR) {
       const int cin = P.cin[i], cout = P.cout[i];
-      for (int o = 0; o < cout; o++) {
-        const int32_t *d = S + P.sh_d[i] + 4 * o;
-        const int32_t d0 = d[0], d1 = d[1], d2 = d[2], d3 = d[3];
-        const bool zero = (d0 | d1 | d2 | d3) == 0;
-        for (int q = tid; q < cin; q += THREADS) {
-          const uint32_t f = (uint32_t)(o * cin + q);
+      const int xat = P.at[i] + cout;
+      for (int q = tid; q < cin; q += THREADS) {
+        int32_t x[4];
+        for (int w = 0; w < 4; w++) {
+          uint32_t v = 0;
+          for (int b = 0; b < 4; b++)
+            v |= (uint32_t)rows[(size_t)idx[4 * w + b] * P.row + xat + q] << (8 * b);
+          x[w] = (int32_t)v;
+        }
+        for (int o = 0; o < cout; o++) {
+          const int32_t *d = S + P.sh_d[i] + 4 * o;
+          const int32_t d0 = d[0], d1 = d[1], d2 = d[2], d3 = d[3];
           int G = 0;
-          if (!zero) {
-            const int32_t *x = S + P.sh_in[i] + 4 * q;
+          if ((d0 | d1 | d2 | d3) != 0) {
             G = __dp4a(d0, x[0], G);
             G = __dp4a(d1, x[1], G);
             G = __dp4a(d2, x[2], G);
             G = __dp4a(d3, x[3], G);
           }
+          const uint32_t f = (uint32_t)(o * cin + q);
           const int cg = G < -CLIPV ? -CLIPV : (G > CLIPV ? CLIPV : G);
           lane[f & 7] += (uint32_t)cg ^ (f + base);
         }
@@ -203,7 +210,7 @@ static void make_plan(const neb2_arch *A, const int *wide, TPlan *p) {
       p->kind[i] = LINEAR;
       at += L.cout + L.cin;
       p->sh_d[i] = sh; sh += 4 * L.cout;
-      p->sh_in[i] = sh; sh += 4 * L.cin;
+      p->sh_in[i] = sh; // unused: input words are reloaded per q, not staged
     } else {
       p->kind[i] = wide[i] ? WIDE : NARROW;
       at += (wide[i] ? 4 : 2) * L.nw;
