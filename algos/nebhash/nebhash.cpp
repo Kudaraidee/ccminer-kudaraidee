@@ -19,6 +19,7 @@ extern "C" {
 #include "algos/nebhash/chacha8.h"
 #include "algos/nebhash/nebhash2.h"
 #include "algos/nebhash/nebhash2_cuda.h"
+#include "algos/nebhash/nebhash2_table_cuda.h"
 }
 
 #include <cuda_runtime.h>
@@ -31,11 +32,11 @@ extern "C" {
 #include <cmath>
 
 #define NEB_MAX_SLOTS   16
-/* One scan window must finish well inside a pool job's lifetime. The reference
- * kernel does ~1.7k attempts/s on arch 1 and ~0.5k/s on arch 2 (GTX 1050 Ti),
- * so a 1M-nonce window would take many minutes and every job would go stale
- * before the first hit could be submitted. */
-#define NEB_SCAN_CAP    1024        /* nonces per scan_run call */
+/* The table kernel evaluates ~0.44 MH/s on a GTX 1050 Ti, so a larger window
+ * still completes in a few tens of milliseconds while amortising the host to
+ * device synchronisation of each scan. Keep it below 64k so the hit list cannot
+ * overflow at the low difficulties used by vardiff seeding. */
+#define NEB_SCAN_CAP    8192        /* nonces per scan_run call */
 #define NEB_MAX_HITS    (MAX_NONCES + 1)
 
 namespace {
@@ -57,7 +58,7 @@ struct Model {
 };
 
 struct ScanHandle {
-	neb2_scan *h = nullptr;
+	neb2t_scan *h = nullptr;
 	int arch = 0;
 	uint8_t model_hash[32];
 };
@@ -183,23 +184,23 @@ bool ensure_scan(int thr_id, int slot, const uint8_t model_hash[32])
 		ref = new ScanHandle();
 
 	if (!ref->h) {
-		int rc = neb2_scan_open(dev, a->id, ds.values.data(), ds.labels.data(),
+		int rc = neb2t_scan_open(dev, a->id, ds.values.data(), ds.labels.data(),
 		                        ds.n, m->weights.data(), NEB_SCAN_CAP,
 		                        NEB_MAX_HITS, &ref->h);
 		if (rc != 0) {
-			applog(LOG_ERR, "nebhash: neb2_scan_open failed on GPU %d (%d)", dev, rc);
+			applog(LOG_ERR, "nebhash: neb2t_scan_open failed on GPU %d (%d)", dev, rc);
 			return false;
 		}
 		ref->arch = a->id;
 		memset(ref->model_hash, 0, 32);
 	} else if (ref->arch != a->id) {
-		neb2_scan_close(ref->h);
+		neb2t_scan_close(ref->h);
 		ref->h = NULL;
 		return ensure_scan(thr_id, slot, model_hash);
 	}
 
 	if (memcmp(ref->model_hash, model_hash, 32)) {
-		int rc = neb2_scan_set_model(ref->h, m->weights.data());
+		int rc = neb2t_scan_set_model(ref->h, m->weights.data());
 		if (rc != 0) {
 			applog(LOG_ERR, "nebhash: model upload failed on GPU %d (%d)", dev, rc);
 			return false;
@@ -214,7 +215,7 @@ void close_all_scans()
 	for (int t = 0; t < MAX_GPUS; t++) {
 		for (int s = 0; s < NEB_MAX_SLOTS; s++) {
 			if (g_scans[t][s]) {
-				neb2_scan_close(g_scans[t][s]->h);
+				neb2t_scan_close(g_scans[t][s]->h);
 				delete g_scans[t][s];
 				g_scans[t][s] = NULL;
 			}
@@ -467,7 +468,7 @@ int nebhash_scanhash(int thr_id, struct work *work, uint32_t max_nonce,
 	memcpy(header, work->neb_header, 80);
 	uint32_t hits[NEB_MAX_HITS + 1];
 	uint32_t nhits = 0;
-	int rc = neb2_scan_run(g_scans[thr_id][slot]->h, header, start, count,
+	int rc = neb2t_scan_run(g_scans[thr_id][slot]->h, header, start, count,
 	                       (const uint8_t *)work->target, hits, &nhits);
 	if (rc != 0) {
 		applog(LOG_ERR, "nebhash: scan failed on GPU %d (%d)", device_map[thr_id], rc);
@@ -500,7 +501,7 @@ void nebhash_free(int thr_id)
 		return;
 	for (int s = 0; s < NEB_MAX_SLOTS; s++) {
 		if (g_scans[thr_id][s]) {
-			neb2_scan_close(g_scans[thr_id][s]->h);
+			neb2t_scan_close(g_scans[thr_id][s]->h);
 			delete g_scans[thr_id][s];
 			g_scans[thr_id][s] = NULL;
 		}

@@ -41,6 +41,7 @@ ccminer_SOURCES	= compat/elist.h miner.h compat.h \
 			  algos/nebhash/chacha8.c algos/nebhash/chacha8.h \
 			  algos/nebhash/blake3_min.c algos/nebhash/blake3_min.h \
 			  algos/nebhash/nebhash2_cuda.cu algos/nebhash/nebhash2_cuda.h \
+			  algos/nebhash/nebhash2_table_cuda.cu algos/nebhash/nebhash2_table_cuda.h \
 			  algos/nebhash/LICENSE.NEB \
 			  algos/verthash/verthash.cu algos/verthash/cuda_verthash.cu \
 			  algos/verthash/verthash-cpu.c algos/verthash/verthash-data.cpp \

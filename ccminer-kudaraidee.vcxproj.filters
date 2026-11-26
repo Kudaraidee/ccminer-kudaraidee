@@ -34,6 +34,9 @@
     <Filter Include="Source Files\CUDA\quark">
       <UniqueIdentifier>{dd0822bd-27cc-4d5c-8e2f-cf7d9b00feb4}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\CUDA\nebhash">
+      <UniqueIdentifier>{7ac6f4d2-3b18-4c0e-9f72-5d1a8e0b6c41}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Source Files\sph">
       <UniqueIdentifier>{0dc051db-f833-476f-b3f4-c69fd03b9348}</UniqueIdentifier>
     </Filter>
@@ -788,6 +791,12 @@
     </ClInclude>
     <CudaCompile Include="algos\quark\anime.cu">
       <Filter>Source Files\CUDA\quark</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\nebhash\nebhash2_cuda.cu">
+      <Filter>Source Files\CUDA\nebhash</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\nebhash\nebhash2_table_cuda.cu">
+      <Filter>Source Files\CUDA\nebhash</Filter>
     </CudaCompile>
     <ClInclude Include="algos\sia\sia-rpc.h">
       <Filter>Source Files\sia</Filter>
