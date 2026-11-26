@@ -1055,7 +1055,8 @@ void stratum_disconnect_intentional(struct stratum_ctx *sctx);
 bool stratum_subscribe(struct stratum_ctx *sctx);
 bool stratum_authorize(struct stratum_ctx *sctx, const char *user, const char *pass);
 bool stratum_handle_method(struct stratum_ctx *sctx, const char *s);
-void stratum_block_accepted(struct stratum_ctx *sctx, const char *job_id, const char *nonce);
+void stratum_block_accepted(struct stratum_ctx *sctx, const char *job_id,
+                            const char *nonce, const char *blockhash);
 void stratum_free_job(struct stratum_ctx *sctx);
 
 bool rpc2_stratum_authorize(struct stratum_ctx *sctx, const char *user, const char *pass);

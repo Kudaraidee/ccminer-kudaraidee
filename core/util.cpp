@@ -2503,33 +2503,46 @@ static bool stratum_unknown_method(struct stratum_ctx *sctx, json_t *id)
 	return ret;
 }
 
+static void nebhash_json_scalar(json_t *j, char *out, size_t len)
+{
+	out[0] = '\0';
+	if (!j)
+		return;
+	if (json_is_string(j))
+		snprintf(out, len, "%s", json_string_value(j));
+	else if (json_is_integer(j))
+		snprintf(out, len, "%" PRId64, json_integer_value(j));
+}
+
 // neb-pool/1 extension: only sent after the node accepted a block candidate.
 // mining.submit is answered earlier, so this is the first reliable solve.
-// Params [job_id, nonce?]; either may arrive as a JSON string or a number.
+// Yiimp sends an object {job_id, extranonce2, ntime, nonce, blockhash, height};
+// the positional [job_id, nonce?, blockhash?] form is kept for older pools.
 static bool nebhash_stratum_block(struct stratum_ctx *sctx, json_t *params)
 {
-	json_t *jjob = json_array_get(params, 0);
-	json_t *jnonce = json_array_get(params, 1);
-	char job[64], nonce[64];
+	json_t *obj = NULL, *arr = NULL;
+	char job[96], nonce[96], hash[96];
 
-	if (!jjob)
-		return false;
-	if (json_is_string(jjob))
-		snprintf(job, sizeof(job), "%s", json_string_value(jjob));
-	else if (json_is_integer(jjob))
-		snprintf(job, sizeof(job), "%" PRId64, json_integer_value(jjob));
-	else
-		return false;
-
-	nonce[0] = '\0';
-	if (jnonce) {
-		if (json_is_string(jnonce))
-			snprintf(nonce, sizeof(nonce), "%s", json_string_value(jnonce));
-		else if (json_is_integer(jnonce))
-			snprintf(nonce, sizeof(nonce), "%" PRId64, json_integer_value(jnonce));
+	if (params) {
+		if (json_typeof(params) == JSON_OBJECT)
+			obj = params;
+		else if (json_typeof(params) == JSON_ARRAY)
+			arr = params;
 	}
+	if (!obj && !arr)
+		return false;
 
-	stratum_block_accepted(sctx, job, nonce);
+	nebhash_json_scalar(obj ? json_object_get(obj, "job_id") : json_array_get(arr, 0),
+	                    job, sizeof(job));
+	nebhash_json_scalar(obj ? json_object_get(obj, "nonce") : json_array_get(arr, 1),
+	                    nonce, sizeof(nonce));
+	nebhash_json_scalar(obj ? json_object_get(obj, "blockhash") : json_array_get(arr, 2),
+	                    hash, sizeof(hash));
+
+	if (!job[0] && !hash[0])
+		return false;
+
+	stratum_block_accepted(sctx, job, nonce, hash);
 	return true;
 }
 

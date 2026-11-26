@@ -1057,10 +1057,10 @@ int share_result(int result, int pooln, double sharediff, const char *reason)
  * so a later mining.block notification is the first reliable proof of a real
  * solve. Keep it independent of net_diff, which nebhash leaves at zero. */
 void stratum_block_accepted(struct stratum_ctx *sctx, const char *job_id,
-                            const char *nonce)
+                            const char *nonce, const char *blockhash)
 {
 	struct pool_infos *p = &pools[sctx->pooln];
-	char detail[80], solved[32];
+	char detail[192], solved[32];
 	size_t n;
 
 	p->solved_count++;
@@ -1073,6 +1073,11 @@ void stratum_block_accepted(struct stratum_ctx *sctx, const char *job_id,
 		n = strlen(detail);
 		snprintf(detail + n, sizeof(detail) - n, "%s nonce %s",
 		         n ? "," : "", nonce);
+	}
+	if (blockhash && *blockhash) {
+		n = strlen(detail);
+		snprintf(detail + n, sizeof(detail) - n, "%s block %s",
+		         n ? "," : "", blockhash);
 	}
 
 	applog(LOG_NOTICE, "%s%s%s%s",
