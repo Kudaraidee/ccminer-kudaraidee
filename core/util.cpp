@@ -22,6 +22,7 @@
 #include <unistd.h>
 #include <jansson.h>
 #include <curl/curl.h>
+#include <openssl/bn.h>
 #include <sys/stat.h>
 #include <time.h>
 #ifdef WIN32
@@ -929,6 +930,35 @@ double kawpow_target_to_diff(const unsigned char* target_be)
 	return target_to_diff(t);
 }
 
+// XHash / EthereumStratum pools express difficulty in units of 2^32 hashes.
+// The share boundary is floor((2^256 - 1) / (diff * 2^32)), stored MSB-first.
+static void xhash_diff_to_target(unsigned char target_be[32], double diff)
+{
+	BN_CTX *ctx = BN_CTX_new();
+	BIGNUM *max = BN_new(), *hashes = BN_new(), *result = BN_new();
+
+	BN_one(max);
+	BN_lshift(max, max, 256);
+	BN_sub_word(max, 1);
+
+	/* floor(diff * 2^32), computed in two 32-bit halves for portability. */
+	uint64_t h = (uint64_t)(diff * 4294967296.0);
+	if (h == 0) h = 1;
+	BN_set_word(hashes, (BN_ULONG)(h >> 32));
+	BN_lshift(hashes, hashes, 32);
+	BN_add_word(hashes, (BN_ULONG)(h & 0xffffffffu));
+
+	BN_div(result, NULL, max, hashes, ctx);
+
+	memset(target_be, 0, 32);
+	int n = BN_num_bytes(result);
+	if (n > 32) n = 32;
+	BN_bn2bin(result, target_be + (32 - n));
+
+	BN_free(max); BN_free(hashes); BN_free(result);
+	BN_CTX_free(ctx);
+}
+
 #ifdef WIN32
 #define socket_blocks() (WSAGetLastError() == WSAEWOULDBLOCK)
 #else
@@ -1289,6 +1319,11 @@ static bool stratum_parse_extranonce(struct stratum_ctx *sctx, json_t *params, i
 	if (opt_algo == ALGO_NEBHASH && json_is_object(params)) {
 		xnonce1 = json_string_value(json_object_get(params, "extranonce1"));
 		xn2_size = (int) json_integer_value(json_object_get(params, "extranonce2_size"));
+	} else if (opt_algo == ALGO_XHASH && json_is_object(params)) {
+		/* EthereumStratum-style pools (miningcore-xhash) answer mining.subscribe
+		 * with {"mining_notify":{...},"extranonce":"<hex>"}. */
+		xnonce1 = json_string_value(json_object_get(params, "extranonce"));
+		xn2_size = 8; /* overwritten by the algo-specific branch below */
 	} else {
 		xnonce1 = json_string_value(json_array_get(params, pndx));
 		xn2_size = (int) json_integer_value(json_array_get(params, pndx+1));
@@ -1321,11 +1356,13 @@ static bool stratum_parse_extranonce(struct stratum_ctx *sctx, json_t *params, i
 			}
 			goto skip_n2;
 		} else if (is_progpow_algo(opt_algo)) {
-			// KawPoW-family subscribe reply is [null, extranonce1] with no xnonce2
-			// size; extranonce1 is the 2- (or 3-) byte prefix of the 8-byte nonce.
+			// ProgPoW/XHash subscribe reply is [null, extranonce1] with no
+			// xnonce2 size; extranonce1 is the leading part of the 8-byte nonce.
+			// XHash uses up to 7 prefix bytes, ProgPoW only the top 2.
 			int xn1_size = (int)strlen(xnonce1) / 2;
-			if (xn1_size < 1 || xn1_size > 6) {
-				applog(LOG_ERR, "ProgPoW: unsupported extranonce prefix size %d", xn1_size);
+			int max_prefix = (opt_algo == ALGO_XHASH) ? 7 : 6;
+			if (xn1_size < 1 || xn1_size > max_prefix) {
+				applog(LOG_ERR, "ProgPoW/XHash: unsupported extranonce prefix size %d", xn1_size);
 				goto out;
 			}
 			xn2_size = 8 - xn1_size;
@@ -1385,6 +1422,9 @@ start:
 	s = (char*)malloc(128 + strlen(ua) + (sctx->session_id ? strlen(sctx->session_id) : 0));
 	if (opt_algo == ALGO_NEBHASH)
 		sprintf(s, "{\"id\": 1, \"method\": \"mining.subscribe\", \"params\": [\"%s\", \"neb-pool/1\"]}", ua);
+	else if (opt_algo == ALGO_XHASH)
+		/* EthereumStratum/1.0.0 identifies itself in the subscribe params. */
+		sprintf(s, "{\"id\": 1, \"method\": \"mining.subscribe\", \"params\": [\"%s\", \"EthereumStratum/1.0.0\"]}", ua);
 	else if (retry)
 		sprintf(s, "{\"id\": 1, \"method\": \"mining.subscribe\", \"params\": []}");
 	else if (sctx->session_id)
@@ -1699,8 +1739,8 @@ static bool sha256dv_stratum_notify(struct stratum_ctx *sctx, json_t *params)
 //          clean(bool), height(int), nbits_hex].
 static bool kawpow_stratum_notify(struct stratum_ctx *sctx, json_t *params)
 {
-	if (!params || !json_is_array(params) || json_array_size(params) < 7) {
-		applog(LOG_ERR, "KawPoW notify: expected >= 7 params");
+	if (!params || !json_is_array(params) || json_array_size(params) < 5) {
+		applog(LOG_ERR, "KawPoW/XHash notify: expected >= 5 params");
 		return false;
 	}
 
@@ -1711,6 +1751,11 @@ static bool kawpow_stratum_notify(struct stratum_ctx *sctx, json_t *params)
 	json_t *j_clean    = json_array_get(params, 4);
 	json_t *j_height   = json_array_get(params, 5);
 	const char *nbits  = json_string_value(json_array_get(params, 6));
+
+	/* EthereumStratum-flavoured pools prefix hashes with 0x. */
+	if (hh     && !strncmp(hh,     "0x", 2)) hh     += 2;
+	if (seed   && !strncmp(seed,   "0x", 2)) seed   += 2;
+	if (target && !strncmp(target, "0x", 2)) target += 2;
 
 	if (!job_id || !hh || !seed || !target ||
 	    strlen(hh) != 64 || strlen(seed) != 64 || strlen(target) != 64) {
@@ -1738,6 +1783,19 @@ static bool kawpow_stratum_notify(struct stratum_ctx *sctx, json_t *params)
 		prefix = (uint16_t)sctx->xnonce1[0] << 8;
 	sctx->job.kawpow_prefix = prefix;
 
+	// XHash takes the full (up to 7-byte) extranonce as the top bits of its
+	// 64-bit nonce; the remaining low bits are scanned by the miner thread.
+	uint64_t xhash_prefix = 0;
+	unsigned xhash_len = 0;
+	if (sctx->xnonce1 && sctx->xnonce1_size > 0) {
+		xhash_len = (unsigned)sctx->xnonce1_size;
+		if (xhash_len > 7) xhash_len = 7;
+		for (unsigned i = 0; i < xhash_len; ++i)
+			xhash_prefix |= ((uint64_t)sctx->xnonce1[i]) << (56 - 8 * i);
+	}
+	sctx->job.xhash_prefix = xhash_prefix;
+	sctx->job.xhash_prefix_len = (uint8_t)xhash_len;
+
 	sctx->job.is_kawpow = true;
 	sctx->job.clean = j_clean ? json_is_true(j_clean) : true;
 	if (json_is_integer(j_height))
@@ -1745,6 +1803,90 @@ static bool kawpow_stratum_notify(struct stratum_ctx *sctx, json_t *params)
 	// These pools carry the share difficulty in the 256-bit target, not in a
 	// numeric mining.set_difficulty; derive it so displays/stats aren't stuck at 1.
 	sctx->job.diff = kawpow_target_to_diff(sctx->job.kawpow_target);
+
+	pthread_mutex_unlock(&stratum_work_lock);
+
+	return true;
+}
+
+// XHash (EthereumStratum dialect) mining.notify:
+//   [job_id, seed_hash, header_hash, clean(bool), height?]
+// Hash strings may carry an optional 0x prefix; height may be a number or
+// a 0x-prefixed hex string (rplant). The share target comes from
+// mining.set_difficulty, not from notify.
+static bool xhash_stratum_notify(struct stratum_ctx *sctx, json_t *params)
+{
+	if (!params || !json_is_array(params) || json_array_size(params) < 4) {
+		applog(LOG_ERR, "XHash notify: expected >= 4 params");
+		return false;
+	}
+
+	const char *job_id = json_string_value(json_array_get(params, 0));
+	const char *seed   = json_string_value(json_array_get(params, 1));
+	const char *hh     = json_string_value(json_array_get(params, 2));
+	json_t *j_clean    = json_array_get(params, 3);
+	json_t *j_height   = json_array_get(params, 4);
+
+	if (!job_id || !hh || !seed)
+		return false;
+
+	/* Skip optional 0x prefix. */
+	if (!strncmp(seed, "0x", 2)) seed += 2;
+	if (!strncmp(hh,   "0x", 2)) hh   += 2;
+	if (strlen(seed) != 64 || strlen(hh) != 64) {
+		applog(LOG_ERR, "XHash notify: invalid seed/header hash length");
+		return false;
+	}
+
+	/* Placeholder notify in some subscribe replies (and keepalives) carry
+	 * all-zero hashes. Such a seed maps to epoch 0 but is not real work;
+	 * adopting it would needlessly rebuild the DAG. */
+	bool zero_seed = true, zero_header = true;
+	for (int i = 0; i < 64; i++) {
+		if (seed[i] != '0') { zero_seed = false; break; }
+	}
+	for (int i = 0; i < 64; i++) {
+		if (hh[i] != '0') { zero_header = false; break; }
+	}
+	if (zero_seed && zero_header) {
+		if (opt_debug) applog(LOG_DEBUG, "XHash: ignoring placeholder notify (zero hashes)");
+		return true;
+	}
+
+	pthread_mutex_lock(&stratum_work_lock);
+
+	free(sctx->job.job_id);
+	sctx->job.job_id = strdup(job_id);
+
+	hex2bin(sctx->job.kawpow_header, hh,   32);
+	hex2bin(sctx->job.kawpow_seed,   seed, 32);
+	// kawpow_target is set by xhash_stratum_set_difficulty(); leave it intact.
+
+	// Full extranonce prefix (up to 7 bytes) as top bits of the 64-bit nonce.
+	uint64_t xhash_prefix = 0;
+	unsigned xhash_len = 0;
+	if (sctx->xnonce1 && sctx->xnonce1_size > 0) {
+		xhash_len = (unsigned)sctx->xnonce1_size;
+		if (xhash_len > 7) xhash_len = 7;
+		for (unsigned i = 0; i < xhash_len; ++i)
+			xhash_prefix |= ((uint64_t)sctx->xnonce1[i]) << (56 - 8 * i);
+	}
+	sctx->job.xhash_prefix = xhash_prefix;
+	sctx->job.xhash_prefix_len = (uint8_t)xhash_len;
+
+	sctx->job.is_kawpow = true;
+	sctx->job.clean = j_clean ? json_is_true(j_clean) : true;
+	/* Some pools (rplant) add height as a 5th param; others omit it. The
+	 * epoch is derived from the seed, so height is only a fallback. */
+	sctx->job.height = 0;
+	if (json_is_integer(j_height))
+		sctx->job.height = (uint32_t)json_integer_value(j_height);
+	else if (json_is_string(j_height)) {
+		const char *hs = json_string_value(j_height);
+		if (hs && !strncmp(hs, "0x", 2)) hs += 2;
+		if (hs) sctx->job.height = (uint32_t)strtoul(hs, NULL, 16);
+	}
+	sctx->job.diff = sctx->next_diff;
 
 	pthread_mutex_unlock(&stratum_work_lock);
 
@@ -2108,6 +2250,17 @@ static bool stratum_notify(struct stratum_ctx *sctx, json_t *params)
 
 	// KawPoW-family pools push mining.set_target (which otherwise flips
 	// is_equihash), so route their notify before the is_equihash branch.
+	if (opt_algo == ALGO_XHASH) {
+		/* Two dialects:
+		 *  - KawPoW-style 7 params [job, header, seed, target, clean,
+		 *    height, nbits] — param 3 is the target string.
+		 *  - EthereumStratum [job, seed, header, clean, height?] — param 3
+		 *    is a boolean "clean" flag (rplant adds a 5th height param).
+		 * Detect by the type of param 3, not the count. */
+		if (json_is_string(json_array_get(params, 3)))
+			return kawpow_stratum_notify(sctx, params);
+		return xhash_stratum_notify(sctx, params);
+	}
 	if (is_progpow_algo(opt_algo)) {
 		return kawpow_stratum_notify(sctx, params);
 	}
@@ -2262,6 +2415,11 @@ static bool stratum_set_difficulty(struct stratum_ctx *sctx, json_t *params)
 
 	pthread_mutex_lock(&stratum_work_lock);
 	sctx->next_diff = diff;
+	if (opt_algo == ALGO_XHASH) {
+		/* EthereumStratum pools send a numeric difficulty; derive the
+		 * 256-bit share boundary used by the scanhash kernel. */
+		xhash_diff_to_target(sctx->job.kawpow_target, diff);
+	}
 	pthread_mutex_unlock(&stratum_work_lock);
 
 	return true;

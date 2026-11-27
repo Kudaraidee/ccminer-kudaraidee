@@ -137,6 +137,7 @@ void algo_free_all(int thr_id)
 	free_evrprogpow(thr_id);
 	free_firopow(thr_id);
 	free_meraki(thr_id);
+	free_xhash(thr_id);
 	free_verthash(thr_id);
 	free_timetravel(thr_id);
 	free_tribus(thr_id);

@@ -392,6 +392,8 @@ extern uint32_t pearl_proof_put(char *b64);
 extern char *pearl_proof_take(uint32_t id);
 extern int scanhash_kawpow(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern void free_kawpow(int thr_id);
+extern int scanhash_xhash(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
+extern void free_xhash(int thr_id);
 extern int scanhash_meowpow(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
 extern void free_meowpow(int thr_id);
 extern int scanhash_evrprogpow(int thr_id, struct work* work, uint32_t max_nonce, unsigned long *hashes_done);
@@ -828,6 +830,8 @@ struct stratum_job {
 	unsigned char kawpow_seed[32];    // epoch seed_hash
 	unsigned char kawpow_target[32];  // 256-bit share target, MSB first
 	uint16_t      kawpow_prefix;      // 2-byte extranonce nonce prefix
+	uint64_t      xhash_prefix;       // XHash: top-aligned extranonce bits
+	uint8_t       xhash_prefix_len;   // XHash: extranonce length in bytes
 	// EqPay (Qtum-derived): hashStateRoot || hashUTXORoot, sent as one 64-byte
 	// notify parameter after prevhash. Wire order, un-swapped.
 	bool          has_eqpay_roots;
@@ -948,9 +952,12 @@ struct work {
 	// KawPoW (Ravencoin) job fields (ethproxy notify/submit, see algos/kawpow/)
 	bool          is_kawpow;
 	unsigned char kawpow_header[32];  // ProgPoW header_hash (from notify)
+	unsigned char kawpow_seed[32];    // XHash epoch seed_hash (from notify)
 	unsigned char kawpow_target[32];  // 256-bit share target, MSB first
 	unsigned char kawpow_mix[32];     // mix_hash of the found solution (for submit)
 	uint16_t      kawpow_prefix;      // 2-byte extranonce nonce prefix (top 16 bits)
+	uint64_t      xhash_prefix;       // XHash: top-aligned extranonce bits
+	uint8_t       xhash_prefix_len;   // XHash: extranonce length in bytes
 	uint64_t      kawpow_nonce;       // full 64-bit nonce of the found solution
 
 	// Pearl (PRL): data[] = raw 76-byte header + trial cursor, nonces[] = proof-stash ids

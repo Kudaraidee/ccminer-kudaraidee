@@ -48,6 +48,9 @@ ccminer_SOURCES	= compat/elist.h miner.h compat.h \
 			  cuda/intensity_autotune.cuh \
 			  algos/kawpow/cuda_kawpow.cu \
 			  algos/kawpow/kawpow.cpp algos/kawpow/kawpow_core.cpp \
+			  algos/xhash/xhash.cpp algos/xhash/xhash_core.cpp algos/xhash/xhash_cuda.cu \
+			  algos/xhash/vendor/xhash/lib/xhash/xhash.cpp algos/xhash/vendor/xhash/lib/xhash/primes.c \
+			  algos/xhash/vendor/xhash/lib/sha3/sha3.c algos/xhash/vendor/xhash/lib/keccak/keccak.c \
 			  algos/kawpow/ethash/ethash.cpp algos/kawpow/ethash/progpow.cpp algos/kawpow/ethash/managed.cpp \
 			  algos/kawpow/ethash/primes.c algos/kawpow/ethash/keccak.c \
 			  algos/kawpow/ethash/keccakf1600.c algos/kawpow/ethash/keccakf800.c \
@@ -202,7 +205,8 @@ ccminer_LDADD    = @LIBCURL@ @JANSSON_LIBS@ @PTHREAD_LIBS@ @WS2_LIBS@ @CUDA_LIBS
 # With it only on the CUDA side, heavy.cu gets the real body and the dispatch is
 # still compiled out, so the algo reports "not available in this build".
 ccminer_CPPFLAGS = -DWITH_HEAVY_ALGO @LIBCURL_CPPFLAGS@ @OPENMP_CFLAGS@ $(CPPFLAGS) $(PTHREAD_FLAGS) -fno-strict-aliasing $(JANSSON_INCLUDES) $(DEF_INCLUDES) $(nvml_defs) -I$(top_srcdir)/algos/curvehash/secp256k1 \
-	-I$(top_srcdir)/algos/curvehash/secp256k1/include -I$(top_srcdir)/algos/bc3hash/ref -I$(top_srcdir)/algos/bc3hash/ref/include
+	-I$(top_srcdir)/algos/curvehash/secp256k1/include -I$(top_srcdir)/algos/bc3hash/ref -I$(top_srcdir)/algos/bc3hash/ref/include \
+	-I$(top_srcdir)/algos/xhash/vendor/xhash/include -I$(top_srcdir)/algos/xhash/vendor/xhash/lib/xhash
 
 if HAVE_OSX
 ccminer_CPPFLAGS += -I/usr/local/llvm/lib/clang/4.0.0/include

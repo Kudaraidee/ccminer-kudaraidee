@@ -387,6 +387,7 @@ Options:\n\
 			whirlpoolx	WhirlpoolX\n\
 			whirlpoolx2	WhirlpoolX2 (CapStash)\n\
 			wildkeccak	Boolberry\n\
+			xhash		XHash (Parallax)\n\
 			x11		X11 (DarkCoin)\n\
 			x11evo		Permuted x11 (Revolver)\n\
 			x13		X13 (MaruCoin)\n\
@@ -1243,6 +1244,30 @@ static bool submit_upstream_work(CURL *curl, struct work *work)
 		char *ntimestr, *noncestr, *xnonce2str, *nvotestr;
 		uint16_t nvote = 0;
 		const uint32_t sub_id = submit_id_next();
+
+		// XHash (EthereumStratum): mining.submit [user, job_id, nonce_low_hex].
+		// The pool prepends the session extranonce; only the miner-scanned low
+		// bytes go on the wire (hashwarp/EthereumStratum convention).
+		if (opt_algo == ALGO_XHASH) {
+			const unsigned plen = work->xhash_prefix_len;
+			uint8_t noncebe[8];
+			for (int b = 0; b < 8; b++)
+				noncebe[b] = (uint8_t)(work->kawpow_nonce >> (56 - 8 * b));
+			char *noncestr = bin2hex(noncebe + plen, 8 - plen);
+			stratum.sharediff = work->sharediff[idnonce];
+			submit_id_remember(sub_id, stratum.sharediff);
+			snprintf(s, sizeof(s), "{\"method\": \"mining.submit\", \"params\": ["
+				"\"%s\", \"%s\", \"%s\"], \"id\":%u}",
+				pool->user, work->job_id + 8, noncestr, sub_id);
+			free(noncestr);
+			gettimeofday(&stratum.tv_submit, NULL);
+			if (unlikely(!stratum_send_line(&stratum, s))) {
+				applog(LOG_ERR, "submit_upstream_work stratum_send_line failed");
+				return false;
+			}
+			stratum.job.shares_count++;
+			return true;
+		}
 
 		// KawPoW-family: ethproxy mining.submit [worker, job_id, nonce(16hex),
 		// header_hash, mixhash]. nonce is the full 64-bit value (big-endian hex)
@@ -2106,6 +2131,7 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 		case ALGO_EVRPROGPOW:
 		case ALGO_FIROPOW:
 		case ALGO_MERAKI:
+		case ALGO_XHASH:
 			// getwork over stratum / pool-supplied midstate, no merkle to generate
 			break;
 #ifdef WITH_HEAVY_ALGO
@@ -2258,14 +2284,17 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 		work->data[18] = le32dec(sctx->job.nbits);    // for calc_network_diff only
 		work->data[19] = 0;                           // nonce_lo cursor
 	} else if (is_progpow_algo(opt_algo)) {
-		// KawPoW-family: pool supplies the ProgPoW header_hash + 256-bit target; no
-		// header to assemble. Height selects the epoch/period; the nonce prefix is
-		// fixed by extranonce1. scanhash searches the low 48 bits (see algos/kawpow/
-		// and algos/progpow_multi/).
+		// KawPoW/XHash family: pool supplies the finished header_hash + 256-bit
+		// target; no header to assemble. ProgPoW uses height/period, XHash uses
+		// the seed_hash for epoch selection. The nonce prefix comes from
+		// extranonce1 (see algos/kawpow/, algos/progpow_multi/, algos/xhash/).
 		work->is_kawpow = sctx->job.is_kawpow;
 		memcpy(work->kawpow_header, sctx->job.kawpow_header, 32);
+		memcpy(work->kawpow_seed, sctx->job.kawpow_seed, 32);
 		memcpy(work->kawpow_target, sctx->job.kawpow_target, 32);
 		work->kawpow_prefix = sctx->job.kawpow_prefix;
+		work->xhash_prefix = sctx->job.xhash_prefix;
+		work->xhash_prefix_len = sctx->job.xhash_prefix_len;
 		work->data[18] = le32dec(sctx->job.nbits);    // for calc_network_diff only
 		work->data[19] = 0;
 	} else if (opt_algo == ALGO_YESPOWEREQPAY) {
@@ -2424,6 +2453,7 @@ header_done:
 		case ALGO_EVRPROGPOW:
 		case ALGO_FIROPOW:
 		case ALGO_MERAKI:
+		case ALGO_XHASH:
 			// Pool sends the 256-bit share target directly (MSB-first bytes);
 			// mirror it into work->target (LE words, target[7] = MSW). scanhash
 			// compares against work->kawpow_target. targetdiff is the pool's
@@ -2741,6 +2771,20 @@ static void *miner_thread(void *userdata)
 			}
 		}
 
+		else if (opt_algo == ALGO_XHASH &&
+		         (strcmp(work.job_id, g_work.job_id) || !work.is_kawpow ||
+		          memcmp(work.kawpow_header, g_work.kawpow_header, 32) ||
+		          memcmp(work.kawpow_seed, g_work.kawpow_seed, 32) ||
+		          memcmp(work.kawpow_target, g_work.kawpow_target, 32) ||
+		          work.xhash_prefix != g_work.xhash_prefix ||
+		          work.xhash_prefix_len != g_work.xhash_prefix_len)) {
+			// XHash jobs carry no data[] words, so the generic header compare
+			// would never adopt g_work and scanhash would see an empty job.
+			const uint32_t pos = nonceptr[0];
+			memcpy(&work, &g_work, sizeof(struct work));
+			nonceptr[0] = pos;
+		}
+
 		else if (memcmp(&work.data[wcmpoft], &g_work.data[wcmpoft], wcmplen) ||
 		         /* Verus pools can push a new solution template with an unchanged
 		          * header; the template is hashed, so it is new work */
@@ -2852,10 +2896,14 @@ static void *miner_thread(void *userdata)
 		else if (opt_algo == ALGO_DECRED) nodata_check_oft = 4; // testnet ver is 0
 		else if (opt_algo == ALGO_SHA256D || opt_algo == ALGO_SHA256T || opt_algo == ALGO_SHA256CSM || opt_algo == ALGO_SHA512256D)
 			nodata_check_oft = 17; // ntime; zpool sha256 jobs carry block version 0
+		else if (opt_algo == ALGO_XHASH)
+			nodata_check_oft = 0;  // unused: XHash jobs live in kawpow_* fields
 		else if (is_progpow_algo(opt_algo))
 			nodata_check_oft = 18; // nbits; ProgPoW jobs carry no header/version word
 		else nodata_check_oft = 0;
-		if (have_stratum && work.data[nodata_check_oft] == 0 && !opt_benchmark) {
+		// XHash has no data[] words at all; gating it on one would stall every job.
+		if (opt_algo != ALGO_XHASH && have_stratum &&
+		    work.data[nodata_check_oft] == 0 && !opt_benchmark) {
 			sleep(1);
 			if (!thr_id) pools[cur_pooln].wait_time += 1;
 			gpulog(LOG_DEBUG, thr_id, "no data");
@@ -3358,6 +3406,9 @@ static void *miner_thread(void *userdata)
 			break;
 		case ALGO_MERAKI:
 			rc = scanhash_meraki(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_XHASH:
+			rc = scanhash_xhash(thr_id, &work, max_nonce, &hashes_done);
 			break;
 		case ALGO_SHA3D:
 			rc = scanhash_sha3d(thr_id, &work, max_nonce, &hashes_done);

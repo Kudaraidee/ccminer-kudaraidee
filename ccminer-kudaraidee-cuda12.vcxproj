@@ -354,6 +354,18 @@
     <ClCompile Include="algos\nebhash\shares.c" />
     <ClCompile Include="algos\nebhash\chacha8.c" />
     <ClCompile Include="algos\kawpow\kawpow_core.cpp" />
+    <ClCompile Include="algos\xhash\xhash.cpp" />
+    <ClCompile Include="algos\xhash\xhash_core.cpp">
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>algos\xhash\vendor\xhash\include;algos\xhash\vendor\xhash\lib\xhash;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="algos\xhash\vendor\xhash\lib\xhash\xhash.cpp">
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>algos\xhash\vendor\xhash\include;algos\xhash\vendor\xhash\lib\xhash;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="algos\xhash\vendor\xhash\lib\xhash\primes.c" />
+    <ClCompile Include="algos\xhash\vendor\xhash\lib\sha3\sha3.c" />
+    <ClCompile Include="algos\xhash\vendor\xhash\lib\keccak\keccak.c" />
     <ClCompile Include="algos\kawpow\ethash\ethash.cpp" />
     <ClCompile Include="algos\kawpow\ethash\progpow.cpp" />
     <ClCompile Include="algos\kawpow\ethash\managed.cpp" />
@@ -436,6 +448,7 @@
     <CudaCompile Include="algos\verthash\verthash.cu" />
     <CudaCompile Include="algos\verthash\cuda_verthash.cu" />
     <CudaCompile Include="algos\kawpow\cuda_kawpow.cu" />
+    <CudaCompile Include="algos\xhash\xhash_cuda.cu" />
     <CudaCompile Include="algos\hoohash\cuda_hoohashv110.cu">
       <FastMath>false</FastMath>
       <FmadOptimization>false</FmadOptimization>

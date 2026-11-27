@@ -127,20 +127,23 @@ enum sha_algos {
 	ALGO_BC3HASH,
 	ALGO_PEARLHASH,
 	ALGO_NEBHASH,
+	ALGO_XHASH,
 	ALGO_AUTO,
 	ALGO_COUNT
 };
 
 extern volatile enum sha_algos opt_algo;
 
-// ProgPoW-over-ethash family (KawPoW + the MeowPow/EvrProgPow/FiroPoW variants
-// in algos/progpow_multi/). They share the ethproxy/kawpow stratum wire format
-// and the work->kawpow_* job fields, so the stratum/submit/gen_work paths treat
-// them uniformly; only the scanhash dispatch differs per variant.
+// Ethproxy-style POW family: ProgPoW-over-ethash (KawPoW + the
+// MeowPow/EvrProgPow/FiroPoW variants in algos/progpow_multi/) and Parallax
+// XHash. They share the mining.notify/submit wire format and the
+// work->kawpow_* job fields, so the stratum/submit/gen_work paths treat them
+// uniformly; only the scanhash dispatch differs per variant. XHash additionally
+// uses kawpow_seed to select its epoch (see algos/xhash/).
 static inline int is_progpow_algo(int a)
 {
 	return a == ALGO_KAWPOW || a == ALGO_MEOWPOW || a == ALGO_EVRPROGPOW ||
-	       a == ALGO_FIROPOW || a == ALGO_MERAKI;
+	       a == ALGO_FIROPOW || a == ALGO_MERAKI || a == ALGO_XHASH;
 }
 
 static const char *algo_names[] = {
@@ -272,6 +275,7 @@ static const char *algo_names[] = {
 	"bc3hash",
 	"pearlhash",
 	"nebhash",
+	"xhash",
 	"auto", /* reserved for multi algo */
 	""
 };

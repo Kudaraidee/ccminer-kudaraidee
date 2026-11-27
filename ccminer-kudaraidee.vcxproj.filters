@@ -532,6 +532,24 @@
     <ClCompile Include="algos\kawpow\kawpow_core.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="algos\xhash\xhash.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\xhash\xhash_core.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\xhash\vendor\xhash\lib\xhash\xhash.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\xhash\vendor\xhash\lib\xhash\primes.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\xhash\vendor\xhash\lib\sha3\sha3.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="algos\xhash\vendor\xhash\lib\keccak\keccak.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="algos\odocrypt\odocrypt_jit.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -1429,6 +1447,9 @@
       <Filter>Source Files\CUDA</Filter>
     </CudaCompile>
     <CudaCompile Include="algos\kawpow\cuda_kawpow.cu">
+      <Filter>Source Files\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="algos\xhash\xhash_cuda.cu">
       <Filter>Source Files\CUDA</Filter>
     </CudaCompile>
     <CudaCompile Include="algos\curvehash\curvehash.cu">
