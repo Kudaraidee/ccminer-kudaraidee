@@ -46,13 +46,12 @@ lifetime while amortising host/device synchronisation; the hit list is
 `MAX_NONCES + 1` entries.
 
 For a linear layer the kernel stages only the `4 × cout` error words in shared
-memory and reloads the `4 × cin` input words directly from the table rows once
-per input element. The 16 row indices are converted to 32-bit row offsets once
+memory and reads the input factors directly from the selected table rows. The 16 row indices are converted to 32-bit row offsets once
 per block (the builder rejects a table larger than 4 GiB), which removes a
 64-bit multiply from every row byte load. Table rows (linear factors and
 convolution weights) are read with `__ldg` through the read-only cache, and
-`THREADS` is 128 so twice as many blocks fit on an SM at the same thread
-occupancy. The eight lane accumulators are reduced per warp and then summed
+`sm_61` uses one warp per block. Other architectures use the configured
+block size, which defaults to 128 threads. The eight lane accumulators are reduced per warp and then summed
 once by thread 0, instead of 256 shared-memory atomics per lane. All sums are
 modulo `2^32`, so changing the order does not change the ticket.
 
@@ -65,15 +64,11 @@ across all 16 selected samples. The digest starts with the contributions of
 an all-zero linear gradient and adds the difference for each active output.
 These additions use modulo `2^32` and preserve the ticket.
 
-For KEP1 and RET2, both the linear layer's input width (`cin`) and the
-CUDA block size are multiples of eight. With flattened weight index
-`f = o * cin + q` and input index `q` advancing from `threadIdx.x` in
-block-sized steps, `f & 7` always equals `threadIdx.x & 7` for that thread.
-The thread accumulates its linear contributions in one unsigned 32-bit
-sum and adds it to that digest lane just before the warp reduction.
-Convolution contributions keep their per-lane accumulation. The scan
-checks the input-width requirement per architecture and the block-size
-requirement at compile time.
+For KEP1 and RET2, the input width of each linear layer is divisible by
+eight. For `f = o * cin + q`, the digest lane `f & 7` is therefore set by
+`q & 7`. Each thread keeps separate sums for the one, two, or four digest
+lanes it contributes to and maps them into the eight lanes at warp
+reduction. The same mapping applies to grouped convolution factors.
 
 ## Provenance
 
@@ -249,3 +244,38 @@ The GPU was idle before each run. All runs were local replays.
 The miner uses the paired path, which improved throughput on both models.
 The integrated kernel matched the C reference hit sets for KEP1 and RET2
 over 384 nonces at five target boundaries.
+
+### Grouped digest sums and linear input loads
+
+The scan kernel accumulates scalar, paired and four-factor results
+in separate thread-local sums and maps them to the original digest
+lanes at warp reduction. Linear inputs use aligned 16-bit loads and
+byte permutation before `__dp4a`. On `sm_61`, one warp handles each
+nonce, uses a ballot to compact the active linear outputs, and reads
+four inputs at a time when the linear input segment is 4-byte aligned.
+Other architectures use the configured block size and paired linear
+loads. The paired linear load follows [tpfuemp's implementation](https://github.com/tpfuemp/ccminer-tpfuemp/commit/5227ec136be86f5c96d1c311cbb2360d92324a26).
+
+Local A/B on GTX 1050 Ti used the same captured model for each pair
+of kernels, 8,192 nonces per batch, and two runs per kernel. The
+integrated kernel matched the CPU hit sets across five target
+boundaries in 384-nonce checks on both KEP1 models and a RET2 fixture.
+
+| Captured model | `5df4efd` baseline | New kernel | Increase |
+| :-- | --: | --: | --: |
+| Yiimp | 938.59 kH/s | 1,456.32 kH/s | 55.2% |
+| MeshPool | 913.63 kH/s | 1,476.53 kH/s | 61.6% |
+
+Live runs used the integrated kernel for three minutes per pool and
+the same 32-byte target on the miner, equivalent to about 12 million
+nonces per expected share. Each pool validated its shares against its
+own target. All 31 submissions were accepted.
+
+| Pool | Accepted | Median scan rate | Peak sample |
+| :-- | --: | --: | --: |
+| Yiimp | 13/13 | 1,428.55 kH/s | 1,457.65 kH/s |
+| MeshPool | 18/18 | 1,146.70 kH/s | 1,440.48 kH/s |
+
+The GPU reached 98°C and its SM clock declined during sustained load.
+These live measurements capture that thermal behavior. The local and
+live measurements remained below 1.50 MH/s.

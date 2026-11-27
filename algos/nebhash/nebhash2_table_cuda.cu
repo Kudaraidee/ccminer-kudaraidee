@@ -71,13 +71,92 @@ __global__ void header_prefix(const uint32_t *header, uint32_t *cv) {
   blake3_compress(blake3_iv(), first, 0, 64, BLAKE3_CHUNK_START, cv);
 }
 
-__global__ void __launch_bounds__(THREADS) table_kernel(const uint8_t *__restrict__ rows, uint32_t n,
+template <int BlockThreads>
+__device__ __forceinline__ void linear_layer_pairs(const uint8_t *__restrict__ rows, const uint32_t *rb, const int32_t *S,
+                                                   int i, int tid, const int *act, int nact, uint32_t base, uint32_t sums[2]) {
+  const int cin = P.cin[i];
+  const int xat = P.at[i] + P.cout[i];
+  uint32_t acc0 = 0, acc1 = 0;
+  for (int q = 2 * tid; q < cin; q += 2 * BlockThreads) {
+    int32_t x0[4], x1[4];
+#pragma unroll
+    for (int w = 0; w < 4; w++) {
+      const uint32_t a = __ldg((const unsigned short *)(rows + rb[4 * w + 0] + xat + q));
+      const uint32_t b = __ldg((const unsigned short *)(rows + rb[4 * w + 1] + xat + q));
+      const uint32_t c = __ldg((const unsigned short *)(rows + rb[4 * w + 2] + xat + q));
+      const uint32_t d = __ldg((const unsigned short *)(rows + rb[4 * w + 3] + xat + q));
+      const uint32_t t01 = a | (b << 16), t23 = c | (d << 16);  // bytes: s0q s0q1 s1q s1q1 | s2q s2q1 s3q s3q1
+      x0[w] = (int32_t)__byte_perm(t01, t23, 0x6420);
+      x1[w] = (int32_t)__byte_perm(t01, t23, 0x7531);
+    }
+    for (int j = 0; j < nact; j++) {
+      const int o = act[j];
+      const int32_t *d = S + P.sh_d[i] + 4 * o;
+      const int32_t d0 = d[0], d1 = d[1], d2 = d[2], d3 = d[3];
+      int G0 = __dp4a(d0, x0[0], 0), G1 = __dp4a(d0, x1[0], 0);
+      G0 = __dp4a(d1, x0[1], G0); G1 = __dp4a(d1, x1[1], G1);
+      G0 = __dp4a(d2, x0[2], G0); G1 = __dp4a(d2, x1[2], G1);
+      G0 = __dp4a(d3, x0[3], G0); G1 = __dp4a(d3, x1[3], G1);
+      const uint32_t f0 = (uint32_t)(o * cin + q), f1 = f0 + 1;
+      const int c0 = G0 < -CLIPV ? -CLIPV : (G0 > CLIPV ? CLIPV : G0);
+      const int c1 = G1 < -CLIPV ? -CLIPV : (G1 > CLIPV ? CLIPV : G1);
+      acc0 += ((uint32_t)c0 ^ (f0 + base)) - (f0 + base);
+      acc1 += ((uint32_t)c1 ^ (f1 + base)) - (f1 + base);
+    }
+  }
+  sums[0] += acc0;
+  sums[1] += acc1;
+}
+
+template <int BlockThreads>
+__device__ __forceinline__ void linear_layer_quads(
+    const uint8_t *__restrict__ rows, const uint32_t *rb, const int32_t *S,
+    int i, int tid, const int *act, int nact, uint32_t base, uint32_t sums[4]) {
+  const int cin = P.cin[i];
+  const int xat = P.at[i] + P.cout[i];
+  uint32_t accum[4] = {};
+  for (int q = 4 * tid; q < cin; q += 4 * BlockThreads) {
+    int32_t x[4][4];
+#pragma unroll
+    for (int w = 0; w < 4; ++w) {
+      const uint32_t a = __ldg((const uint32_t *)(rows + rb[4 * w] + xat + q));
+      const uint32_t b = __ldg((const uint32_t *)(rows + rb[4 * w + 1] + xat + q));
+      const uint32_t c = __ldg((const uint32_t *)(rows + rb[4 * w + 2] + xat + q));
+      const uint32_t d = __ldg((const uint32_t *)(rows + rb[4 * w + 3] + xat + q));
+      const uint32_t ab0 = __byte_perm(a,b,0x5140), cd0 = __byte_perm(c,d,0x5140);
+      const uint32_t ab1 = __byte_perm(a,b,0x7362), cd1 = __byte_perm(c,d,0x7362);
+      x[0][w] = (int32_t)__byte_perm(ab0,cd0,0x5410);
+      x[1][w] = (int32_t)__byte_perm(ab0,cd0,0x7632);
+      x[2][w] = (int32_t)__byte_perm(ab1,cd1,0x5410);
+      x[3][w] = (int32_t)__byte_perm(ab1,cd1,0x7632);
+    }
+    for (int j = 0; j < nact; ++j) {
+      const int o = act[j];
+      const int32_t *d = S + P.sh_d[i] + 4 * o;
+#pragma unroll
+      for (int p = 0; p < 4; ++p) {
+        int gradient = __dp4a(d[0],x[p][0],0);
+        gradient = __dp4a(d[1],x[p][1],gradient);
+        gradient = __dp4a(d[2],x[p][2],gradient);
+        gradient = __dp4a(d[3],x[p][3],gradient);
+        const uint32_t salt=(uint32_t)(o * cin + q + p) + base;
+        const int clipped = gradient < -CLIPV ? -CLIPV : (gradient > CLIPV ? CLIPV : gradient);
+        accum[p] += ((uint32_t)clipped ^ salt) - salt;
+      }
+    }
+  }
+#pragma unroll
+  for (int p = 0; p < 4; ++p) sums[p] += accum[p];
+}
+
+template <int BlockThreads>
+__global__ void __launch_bounds__(BlockThreads) table_kernel(const uint8_t *__restrict__ rows, uint32_t n,
                                                         const uint32_t *__restrict__ h0, uint32_t start,
                                                         const uint32_t *__restrict__ bound, uint32_t *hits,
                                                         uint32_t max_hits, const uint32_t *__restrict__ cv) {
   extern __shared__ int32_t S[];  // per linear layer: cout x 4 words of errors (inputs reloaded from rows)
   __shared__ uint32_t key[8], idx[NEB_NB], lanes[8];
-  __shared__ uint32_t wsum[8][THREADS / 32];
+  __shared__ uint32_t wsum[8][BlockThreads / 32];
   __shared__ int active[NEB2_MAX_LAYERS][32], active_count[NEB2_MAX_LAYERS];
   const int tid = threadIdx.x;
   const uint32_t nonce = start + blockIdx.x;
@@ -100,64 +179,66 @@ __global__ void __launch_bounds__(THREADS) table_kernel(const uint8_t *__restric
   // per input element and reused across all outputs, so shared memory stays tiny
   // and many more blocks fit on an SM. The row bytes and their packing are the
   // same as before; only the loop order changes, and the lane sums are mod 2^32.
-  for (int i = 0; i < P.nlayers; i++) {
-    if (P.kind[i] != LINEAR) continue;
-    for (int o = tid; o < P.cout[i]; o += THREADS) {
-      for (int w = 0; w < 4; w++) {
-        uint32_t v = 0;
-        for (int b = 0; b < 4; b++)
-          v |= (uint32_t)__ldg(&rows[rb[4 * w + b] + P.at[i] + o]) << (8 * b);
-        S[P.sh_d[i] + 4 * o + w] = (int32_t)v;
+  if (BlockThreads == 32) {
+    // Pack the active outputs in lane order without a separate serial pass.
+    for (int i = 0; i < P.nlayers; i++) {
+      if (P.kind[i] != LINEAR || tid >= 32) continue;
+      uint32_t used = 0;
+      if (tid < P.cout[i]) {
+#pragma unroll
+        for (int w = 0; w < 4; ++w) {
+          uint32_t bits = 0;
+#pragma unroll
+          for (int b = 0; b < 4; ++b)
+            bits |= (uint32_t)__ldg(&rows[rb[4 * w + b] + P.at[i] + tid]) << (8 * b);
+          S[P.sh_d[i] + 4 * tid + w] = (int32_t)bits;
+          used |= bits;
+        }
       }
+      const uint32_t mask = __ballot_sync(0xffffffffu, used != 0);
+      if (used) active[i][__popc(mask & ((1u << tid) - 1))] = tid;
+      if (tid == 0) active_count[i] = __popc(mask);
     }
-  }
-  __syncthreads();
-  if (tid < P.nlayers && P.kind[tid] == LINEAR) {
-    int count = 0;
-    for (int o = 0; o < P.cout[tid]; o++) {
-      const int32_t *d = S + P.sh_d[tid] + 4 * o;
-      if ((d[0] | d[1] | d[2] | d[3]) != 0) active[tid][count++] = o;
-    }
-    active_count[tid] = count;
-  }
-  __syncthreads();
-  uint32_t linear_sum = 0;
-  uint32_t lane[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-  for (int i = 0; i < P.nlayers; i++) {
-    const uint32_t base = 7919u * (uint32_t)(i + 1);
-    if (P.kind[i] == LINEAR) {
-      const int cin = P.cin[i], cout = P.cout[i];
-      const int xat = P.at[i] + cout;
-      for (int q = tid; q < cin; q += THREADS) {
-        int32_t x[4];
+  } else {
+    for (int i = 0; i < P.nlayers; i++) {
+      if (P.kind[i] != LINEAR) continue;
+      for (int o = tid; o < P.cout[i]; o += BlockThreads) {
         for (int w = 0; w < 4; w++) {
           uint32_t v = 0;
           for (int b = 0; b < 4; b++)
-            v |= (uint32_t)__ldg(&rows[rb[4 * w + b] + xat + q]) << (8 * b);
-          x[w] = (int32_t)v;
-        }
-        for (int j = 0; j < active_count[i]; j++) {
-          const int o = active[i][j];
-          const int32_t *d = S + P.sh_d[i] + 4 * o;
-          const int32_t d0 = d[0], d1 = d[1], d2 = d[2], d3 = d[3];
-          int G = 0;
-          {
-            G = __dp4a(d0, x[0], G);
-            G = __dp4a(d1, x[1], G);
-            G = __dp4a(d2, x[2], G);
-            G = __dp4a(d3, x[3], G);
-          }
-          const uint32_t f = (uint32_t)(o * cin + q);
-          const int cg = G < -CLIPV ? -CLIPV : (G > CLIPV ? CLIPV : G);
-          linear_sum += ((uint32_t)cg ^ (f + base)) - (f + base);
+            v |= (uint32_t)__ldg(&rows[rb[4 * w + b] + P.at[i] + o]) << (8 * b);
+          S[P.sh_d[i] + 4 * o + w] = (int32_t)v;
         }
       }
+    }
+    __syncthreads();
+    if (tid < P.nlayers && P.kind[tid] == LINEAR) {
+      int count = 0;
+      for (int o = 0; o < P.cout[tid]; o++) {
+        const int32_t *d = S + P.sh_d[tid] + 4 * o;
+        if ((d[0] | d[1] | d[2] | d[3]) != 0) active[tid][count++] = o;
+      }
+      active_count[tid] = count;
+    }
+  }
+  __syncthreads();
+  // Group sums are assigned to their original lanes just before warp reduction.
+  uint32_t scalar_sum = 0;
+  uint32_t quad_sum[4] = {};
+  uint32_t pair_sum[2] = {};
+  for (int i = 0; i < P.nlayers; i++) {
+    const uint32_t base = 7919u * (uint32_t)(i + 1);
+    if (P.kind[i] == LINEAR) {
+      if (BlockThreads == 32 && ((P.at[i] + P.cout[i]) & 3) == 0)
+        linear_layer_quads<BlockThreads>(rows, rb, S, i, tid, active[i], active_count[i], base, quad_sum);
+      else
+        linear_layer_pairs<BlockThreads>(rows, rb, S, i, tid, active[i], active_count[i], base, pair_sum);
     } else {
       if (P.kind[i] == NARROW8) {
         // Four consecutive int8 factors occupy one aligned word. Transpose the
         // bytes of four rows so each resulting word holds one factor from four
         // samples, then dp4a sums those four samples with no 16-bit truncation.
-        for (int f0 = 4 * tid; f0 < P.nw[i]; f0 += 4 * THREADS) {
+        for (int f0 = 4 * tid; f0 < P.nw[i]; f0 += 4 * BlockThreads) {
           int G0 = 0, G1 = 0, G2 = 0, G3 = 0;
 #pragma unroll
           for (int r = 0; r < NEB_NB; r += 4) {
@@ -180,15 +261,15 @@ __global__ void __launch_bounds__(THREADS) table_kernel(const uint8_t *__restric
             const int f = f0 + j;
             if (f >= P.nw[i]) break;
             const int cg = G[j] < -CLIPV ? -CLIPV : (G[j] > CLIPV ? CLIPV : G[j]);
-            lane[f & 7] += (uint32_t)cg ^ ((uint32_t)f + base);
+            quad_sum[j] += (uint32_t)cg ^ ((uint32_t)f + base);
           }
         }
       } else if (P.kind[i] == NARROW && (P.nw[i] & 1) == 0) {
         // int16 factors in pairs: one 32-bit load per sample brings entries f and f+1 (low / high half; at, the
         // row size and 2 * f are multiples of 4), halving the loads of the gather. Sums stay 32-bit, so they are
-        // exact. f = 2 * tid + 2 * THREADS * k, so the lanes are (2 * tid + j) & 7: two fixed accumulators.
+        // exact. f = 2 * tid + 2 * BlockThreads * k, so the lanes are (2 * tid + j) & 7: two fixed accumulators.
         uint32_t acc0 = 0, acc1 = 0;
-        for (int f = 2 * tid; f < P.nw[i]; f += 2 * THREADS) {
+        for (int f = 2 * tid; f < P.nw[i]; f += 2 * BlockThreads) {
           int G0 = 0, G1 = 0;
 #pragma unroll
           for (int b = 0; b < NEB_NB; b++) {
@@ -201,10 +282,10 @@ __global__ void __launch_bounds__(THREADS) table_kernel(const uint8_t *__restric
           acc0 += (uint32_t)c0 ^ ((uint32_t)f + base);
           acc1 += (uint32_t)c1 ^ ((uint32_t)(f + 1) + base);
         }
-        lane[(2 * tid) & 7] += acc0;
-        lane[(2 * tid + 1) & 7] += acc1;
+        pair_sum[0] += acc0;
+        pair_sum[1] += acc1;
       } else {
-        for (int f = tid; f < P.nw[i]; f += THREADS) {
+        for (int f = tid; f < P.nw[i]; f += BlockThreads) {
           int G = 0;
           if (P.kind[i] == NARROW) {
             for (int b = 0; b < NEB_NB; b++) G += __ldg((const int16_t *)(rows + rb[b] + P.at[i] + 2 * f));
@@ -212,7 +293,7 @@ __global__ void __launch_bounds__(THREADS) table_kernel(const uint8_t *__restric
             for (int b = 0; b < NEB_NB; b++) G += __ldg((const int32_t *)(rows + rb[b] + P.at[i] + 4 * f));
           }
           const int cg = G < -CLIPV ? -CLIPV : (G > CLIPV ? CLIPV : G);
-          lane[f & 7] += (uint32_t)cg ^ ((uint32_t)f + base);
+          scalar_sum += (uint32_t)cg ^ ((uint32_t)f + base);
         }
       }
     }
@@ -223,7 +304,9 @@ __global__ void __launch_bounds__(THREADS) table_kernel(const uint8_t *__restric
     const int warp = tid >> 5;
     #pragma unroll
     for (int k = 0; k < 8; k++) {
-      const uint32_t sum = lane[k] + ((tid & 7) == k ? linear_sum : 0u);
+      uint32_t sum = (tid & 7) == k ? scalar_sum : 0u;
+      if ((tid & 1) == (k >> 2)) sum += quad_sum[k & 3];
+      if ((tid & 3) == (k >> 1)) sum += pair_sum[k & 1];
       const uint32_t v = warp_sum(sum);
       if (!(tid & 31)) wsum[k][warp] = v;
     }
@@ -231,7 +314,7 @@ __global__ void __launch_bounds__(THREADS) table_kernel(const uint8_t *__restric
     if (!tid) {
       for (int k = 0; k < 8; k++) {
         uint32_t v = 0;
-        for (int w = 0; w < THREADS / 32; w++) v += wsum[k][w];
+        for (int w = 0; w < BlockThreads / 32; w++) v += wsum[k][w];
         lanes[k] = v + P.linear_zero[k];
       }
     }
@@ -253,6 +336,7 @@ __global__ void __launch_bounds__(THREADS) table_kernel(const uint8_t *__restric
 
 struct neb2t_scan {
   int device, arch;
+  bool single_warp;
   TPlan plan;
   uint32_t n, capacity, max_hits;
   std::vector<uint8_t> values, labels, rows;
@@ -408,9 +492,9 @@ int neb2t_scan_open(int device, int arch, const uint8_t *values, const uint8_t *
                    uint32_t capacity, uint32_t max_hits, neb2t_scan **out) {
   const neb2_arch *A = neb2_arch_get(arch);
   if (!A || n == 0 || capacity == 0 || max_hits == 0) return (int)cudaErrorInvalidValue;
-  static_assert(THREADS % 8 == 0, "linear lane requires groups of 8 threads");
+  static_assert(THREADS % 32 == 0, "reduction requires whole CUDA warps");
   for (int i = 0; i < A->nlayers; i++)
-    if (A->l[i].kind == NEB2_LINEAR && A->l[i].cin % 8 != 0) return (int)cudaErrorInvalidValue;
+    if (A->l[i].kind == NEB2_LINEAR && (A->l[i].cin % 8 != 0 || (A->l[i].cout & 1) || A->l[i].cout > 32)) return (int)cudaErrorInvalidValue;
   neb2t_scan *s = new neb2t_scan();
   s->device = device;
   s->arch = arch;
@@ -424,6 +508,10 @@ int neb2t_scan_open(int device, int arch, const uint8_t *values, const uint8_t *
   s->d_header = s->d_bound = s->d_hits = NULL;
   memset(&s->plan, 0, sizeof s->plan);
   cudaError_t e = cudaSetDevice(device);
+  cudaDeviceProp properties;
+  if (e == cudaSuccess) e = cudaGetDeviceProperties(&properties, device);
+  // The one-warp configuration was tuned for Pascal's sm_61.
+  if (e == cudaSuccess) s->single_warp = properties.major == 6 && properties.minor == 1;
   if (e == cudaSuccess) e = cudaMalloc(&s->d_header, 80);
   if (e == cudaSuccess) e = cudaMalloc(&s->d_cv, 32);
   if (e == cudaSuccess) e = cudaMalloc(&s->d_bound, 32);
@@ -456,8 +544,13 @@ int neb2t_scan_run(neb2t_scan *s, const uint8_t *header, uint32_t start, uint32_
   TRY(cudaMemset(s->d_hits, 0, 4));
   for (uint32_t done = 0; done < count; done += CHUNK) {
     const uint32_t part = count - done < CHUNK ? count - done : CHUNK;
-    table_kernel<<<part, THREADS, (size_t)s->plan.shared_words * 4>>>(s->d_rows, s->n, s->d_header, start + done, s->d_bound,
-                                                                      s->d_hits, s->max_hits, s->d_cv);
+    const size_t shared = (size_t)s->plan.shared_words * sizeof(int32_t);
+    if (s->single_warp)
+      table_kernel<32><<<part, 32, shared>>>(s->d_rows, s->n, s->d_header, start + done, s->d_bound,
+                                           s->d_hits, s->max_hits, s->d_cv);
+    else
+      table_kernel<THREADS><<<part, THREADS, shared>>>(s->d_rows, s->n, s->d_header, start + done, s->d_bound,
+                                                     s->d_hits, s->max_hits, s->d_cv);
     TRY(cudaGetLastError());
   }
   uint32_t found = 0;
