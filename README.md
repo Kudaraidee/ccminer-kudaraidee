@@ -214,6 +214,16 @@ source tree stays free of build artefacts.
 - **WSL2:** the CUDA driver library `libcuda.so` lives in `/usr/lib/wsl/lib`
   rather than under the toolkit; `configure.sh` already adds it to `LDFLAGS`.
 
+HiveOS
+------
+
+The `hive/` directory provides a HiveOS custom-miner integration: config
+generation, launch, stats and a packaging helper. Build with `./build.sh`, run
+`./hive/package.sh`, then install the resulting
+`ccminer-kudaraidee-1.4.0.tar.gz` as a custom miner. See
+[hive/README.md](hive/README.md) for Flight Sheet fields, the Nebhash dataset
+option and the stats format.
+
 Stratum over TLS
 ----------------
 

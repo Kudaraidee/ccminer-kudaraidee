@@ -1,64 +1,80 @@
 #!/usr/bin/env bash
-# ccminer implementation from https://github.com/minershive/hiveos-linux/tree/master/hive/miners/ccminer
+# HiveOS custom-miner stats for ccminer-kudaraidee.
+# Sourced by the HiveOS agent, so this script must define $khs (kH/s) and $stats.
 
-. /hive/miners/custom/ccminer-kudaraidee/h-manifest.conf
-
-threads=`echo "threads" | nc -w 5 localhost ${MINER_API_PORT} | tr -d '\0'` #&& echo $threads
-if [[ $? -ne 0  || -z $threads ]]; then
-	echo -e "${YELLOW}Failed to read $miner stats from localhost:${MINER_API_PORT}${NOCOLOR}"
-else
-	summary=`echo "summary" | nc -w 2 localhost ${MINER_API_PORT} | tr -d '\0'`
-	re=';UPTIME=([0-9]+);' && [[ $summary =~ $re ]] && local uptime=${BASH_REMATCH[1]} #&& echo "Matched" || echo "No match"
-	#khs will calculate from cards; re=';KHS=([0-9\.]+);' && [[ $summary =~ $re ]] && khs=${BASH_REMATCH[1]} #&& echo "Matched" || echo "No match"
-	algo=`echo "$summary" | tr ';' '\n' | grep -m1 'ALGO=' | sed -e 's/.*=//'`
-	local ac=`echo "$summary" | tr ';' '\n' | grep -m1 'ACC=' | sed -e 's/.*=//'`
-	local rj=`echo "$summary" | tr ';' '\n' | grep -m1 'REJ=' | sed -e 's/.*=//'`
-	local ver=`echo "$summary" | tr ';' '\n' | grep -m1 'VER=' | sed -e 's/.*=//'`
-	#stats=`echo $threads | tr '|' '\n' | tr ';' '\n' | tr -cd '\11\12\15\40-\176' | grep -E 'KHS=' | sed -e 's/.*=//' | jq -cs '{khs:.}'`
-	striplines=`echo "$threads" | tr '|' '\n' | tr ';' '\n' | tr -cd '\11\12\15\40-\176'`
-
-	#if GPU has 0.0 temp it hanged. ccminer does not mine on this card but shows hashrate
-	cctemps=(`echo "$striplines" | grep 'TEMP=' | sed -e 's/.*=//'`) #echo ${cctemps[@]} | tr " " "\n" #print it in lines
-	cckhs=(`echo "$striplines" | grep 'KHS=' | sed -e 's/.*=//'`)
-	ccbusids=(`echo "$striplines" | grep 'BUS=' | sed -e 's/.*=//'`)
-	local bus_numbers=$(jq -sc . <<< "${ccbusids[*]}")
-
-
-	#local nvidiastats
-	for (( i=0; i < ${#cckhs[@]}; i++ )); do
-		#if temp is 0 then driver or GPU failed
-		[[ ${cctemps[$i]} == "0.0" ]] && cckhs[$i]="0.0"
-
-		#cckhs[$i]="84316579.94" #test
-		#check Ghs. 1080ti gives ~64mh (64000kh) on lyra. when it's showing ghs then load is 0 on gpu
-		#if [[ `echo ${cckhs[$i]} | awk '{ print ($1 >= 1000000) ? 1 : 0 }'` == 1 ]]; then #hash is in Ghs, >= 1000000 khs
-		if [[ `echo ${cckhs[$i]} | awk '{ print ($1 >= 1000) ? 1 : 0 }'` == 1 ]]; then # > 1Mh
-			#[[ -z $nvidiastats ]] && nvidiastats=`gpu-stats nvidia` #a bit overhead in calling nvidia-smi again
-			local busid=`echo ${ccbusids[$i]} | awk '{ printf("%02x:00.0", $1) }'` #ccbus is decimal
-			local load_i=`echo "$gpu_stats" | jq ".busids|index(\"$busid\")"`
-			if [[ $load_i != "null" ]]; then #can be null on failed driver
-				local load=`echo "$gpu_stats" | jq -r ".load[$load_i]"`
-				#load=0 #test
-				#[[ -z $load || $load -le 10 ]] &&
-					#echo -e "${RED}Hash on GPU$i is in GH/s (${cckhs[$i]} kH/s) but Load is detected to be only $load%${NOCOLOR}" &&
-					#cckhs[$i]="0.0"
-			fi
-		fi
-
-		#khs=`echo $khs ${cckhs[$i]} | awk '{ printf("%.3f", $1 + $2) }'`
-		khs=`echo $khs ${cckhs[$i]} | awk '{ printf("%.3f", $1 + $2) }'`
-	done
-
-	khs=`echo $khs | sed -E 's/^( *[0-9]+\.[0-9]([0-9]*[1-9])?)0+$/\1/'` #1234.100 -> 1234.1
-
-	stats=$(jq -n \
-		--arg uptime "$uptime" \
-		--arg algo "$algo" \
-		--arg ths "$total_hashrate" \
-		--argjson hs "`echo ${cckhs[@]} | tr " " "\n" | jq -cs '.'`" \
-		--argjson temp "`echo ${cctemps[@]} | tr " " "\n" | jq -cs '.'`" \
-		--argjson fan "`echo \"$striplines\" | grep 'FAN=' | sed -e 's/.*=//' | jq -cs '.'`" \
-		--arg ac "$ac" --arg rj "$rj" --argjson bus_numbers "$bus_numbers" \
-		--arg ver "$ver" \
-		'{hs: $hs, $temp, $fan, $uptime, ar: [$ac, $rj], $bus_numbers, algo: "radiant", $ver}')
+_hive_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -z ${MINER_API_PORT:-} ]]; then
+	[[ -f "$_hive_dir/h-manifest.conf" ]] && . "$_hive_dir/h-manifest.conf"
 fi
+
+_ccminer_field() {
+	printf '%s\n' "$1" | tr ';' '\n' | grep -m1 "^$2=" | sed -e 's/.*=//'
+}
+
+_ccminer_json_array() {
+	(($#)) || { printf '[]'; return; }
+	printf '%s\n' "$@" | jq -cs 'map(tonumber? // 0)'
+}
+
+api_timeout=${API_TIMEOUT:-5}
+khs=0
+stats='{"hs":[],"hs_units":"khs","temp":[],"fan":[],"uptime":0,"ar":[0,0],"bus_numbers":[],"algo":"","ver":""}'
+
+raw_threads="$(echo "threads" | nc -w "$api_timeout" localhost "${MINER_API_PORT}" 2>/dev/null)"
+nc_rc=$?
+threads="$(printf '%s' "$raw_threads" | tr -d '\0')"
+if [[ $nc_rc -ne 0 || -z $threads ]]; then
+	echo -e "${YELLOW-}Failed to read ${CUSTOM_NAME:-ccminer-kudaraidee} stats from localhost:${MINER_API_PORT}${NOCOLOR-}"
+	return 0 2>/dev/null || exit 0
+fi
+
+raw_summary="$(echo "summary" | nc -w 2 localhost "${MINER_API_PORT}" 2>/dev/null)"
+summary="$(printf '%s' "$raw_summary" | tr -d '\0')"
+
+uptime="$(_ccminer_field "$summary" UPTIME)"
+algo="$(_ccminer_field "$summary" ALGO)"
+ac="$(_ccminer_field "$summary" ACC)"
+rj="$(_ccminer_field "$summary" REJ)"
+ver="$(_ccminer_field "$summary" VER)"
+
+[[ $uptime =~ ^[0-9]+$ ]] || uptime=0
+[[ $ac =~ ^[0-9]+$ ]] || ac=0
+[[ $rj =~ ^[0-9]+$ ]] || rj=0
+[[ -n $algo ]] || algo="${CUSTOM_ALGO:-}"
+[[ -n $ver ]] || ver="${CUSTOM_VERSION:-}"
+
+striplines="$(printf '%s\n' "$threads" | tr '|' '\n' | tr ';' '\n' | tr -cd '\11\12\15\40-\176')"
+
+mapfile -t cckhs < <(printf '%s\n' "$striplines" | grep 'KHS=' | sed -e 's/.*=//')
+mapfile -t cctemps < <(printf '%s\n' "$striplines" | grep 'TEMP=' | sed -e 's/.*=//')
+mapfile -t ccbusids < <(printf '%s\n' "$striplines" | grep 'BUS=' | sed -e 's/.*=//')
+mapfile -t ccfans < <(printf '%s\n' "$striplines" | grep 'FAN=' | sed -e 's/.*=//')
+
+# A zero temperature means this GPU did not come up; do not credit its hashrate.
+for i in "${!cckhs[@]}"; do
+	[[ ${cctemps[$i]:-} == "0.0" ]] && cckhs[$i]=0
+done
+
+khs="$(awk -v values="${cckhs[*]:-}" 'BEGIN {
+	n = split(values, a, " ")
+	total = 0
+	for (i = 1; i <= n; i++) if (a[i] != "") total += a[i]
+	printf "%.3f", total
+}')"
+
+hs_json="$(_ccminer_json_array "${cckhs[@]}")"
+temp_json="$(_ccminer_json_array "${cctemps[@]}")"
+fan_json="$(_ccminer_json_array "${ccfans[@]}")"
+bus_json="$(_ccminer_json_array "${ccbusids[@]}")"
+
+stats="$(jq -n \
+	--argjson hs "$hs_json" \
+	--argjson temp "$temp_json" \
+	--argjson fan "$fan_json" \
+	--argjson uptime "$uptime" \
+	--argjson ar "[$ac, $rj]" \
+	--argjson bus_numbers "$bus_json" \
+	--arg algo "$algo" \
+	--arg ver "$ver" \
+	'{hs: $hs, hs_units: "khs", temp: $temp, fan: $fan, uptime: $uptime,
+	  ar: $ar, bus_numbers: $bus_numbers, algo: $algo, ver: $ver}')"
