@@ -394,8 +394,9 @@ static FillStatus fill_rows(neb2t_scan *s, const neb2_arch *A, const int8_t *wei
     th.emplace_back([&, t] {
       std::vector<int32_t> g(NEB2_MAX_WEIGHTS);
       std::vector<int8_t> fac(2 * NEB2_MAX_WEIGHTS);
+      uint32_t magnitude_bits[NEB2_MAX_LAYERS] = {};
       for (uint32_t i = t; i < s->n; i += nt) {
-        neb2_sample_grad(m, s->values.data() + (size_t)i * A->nin, s->labels[i], g.data(), fac.data());
+        neb2_sample_table_row(m, s->values.data() + (size_t)i * A->nin, s->labels[i], g.data(), fac.data());
         uint8_t *row = s->rows.data() + (size_t)i * p.row;
         const int8_t *f = fac.data();
         for (int l = 0; l < A->nlayers; l++) {
@@ -406,13 +407,20 @@ static FillStatus fill_rows(neb2t_scan *s, const neb2_arch *A, const int8_t *wei
           } else {
             const int32_t *grad = g.data() + L.w_off;
             memcpy(row + p.at[l], grad, (size_t)4 * L.nw);
+            // Fold negatives with bitwise complement so -128 and -32768
+            // fit the same unsigned thresholds as 127 and 32767.
+            uint32_t bits = 0;
             for (int k = 0; k < L.nw; k++) {
               const int32_t v = grad[k];
-              if (v < -128 || v > 127) overflow8[t] |= 1u << l;
-              if (v < -32768 || v > 32767) overflow[t] |= 1u << l;
+              bits |= v < 0 ? ~uint32_t(v) : uint32_t(v);
             }
+            magnitude_bits[l] |= bits;
           }
         }
+      }
+      for (int l = 0; l < A->nlayers; l++) {
+        if (magnitude_bits[l] > 127) overflow8[t] |= 1u << l;
+        if (magnitude_bits[l] > 32767) overflow[t] |= 1u << l;
       }
     });
   for (auto &t : th) t.join();

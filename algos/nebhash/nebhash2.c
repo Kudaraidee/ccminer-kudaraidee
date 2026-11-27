@@ -228,9 +228,11 @@ static void backward_layer(const neb2_arch *A, const int8_t *wl, int32_t *gl, wo
     for (int o = 0; o < L->cout; o++) {
       const int32_t d = B->d[o];
       if (d == 0) continue;
-      int32_t *g = gl + (size_t)o * L->cin;
       const int8_t *w = wl + (size_t)o * L->cin;
-      for (int j = 0; j < L->cin; j++) g[j] += d * in[j];
+      if (gl) {
+        int32_t *g = gl + (size_t)o * L->cin;
+        for (int j = 0; j < L->cin; j++) g[j] += d * in[j];
+      }
       if (send)
         for (int j = 0; j < L->cin; j++) B->mm[j] += d * w[j];
     }
@@ -332,12 +334,12 @@ int neb2_share_eval(const neb2_model *m, const neb2_dataset *ds, const uint8_t k
   return 0;
 }
 
-int neb2_sample_grad(const neb2_model *m, const uint8_t *x, int label, int32_t *g, int8_t *fac) {
+static int sample_grad(const neb2_model *m, const uint8_t *x, int label, int32_t *g, int8_t *fac, int factors_only) {
   const neb2_arch *A = neb2_arch_get(m->arch);
   if (!A) return -1;
   work W;
   if (work_alloc(A, &W) != 0) return -1;
-  memset(g, 0, (size_t)A->nweights * sizeof(int32_t));
+  if (!factors_only) memset(g, 0, (size_t)A->nweights * sizeof(int32_t));
   const int last = A->nlayers - 1;
   for (int i = 0; i < A->nlayers; i++) {
     gather_input(A, &W, i, x);
@@ -347,7 +349,15 @@ int neb2_sample_grad(const neb2_model *m, const uint8_t *x, int label, int32_t *
     const int t = (o == label) ? NEB_TPOS : NEB_TNEG;
     W.b[last].e[o] = clipi(W.b[last].out[o] - t, -8, 7);
   }
-  for (int i = last; i >= 0; i--) backward_layer(A, m->w + A->l[i].w_off, g + A->l[i].w_off, &W, i);
+  for (int i = last; i >= 0; i--) {
+    const neb2_layer *L = &A->l[i];
+    int32_t *gl = g + L->w_off;
+    if (factors_only) {
+      if (L->kind == NEB2_LINEAR) gl = NULL;
+      else memset(gl, 0, (size_t)L->nw * sizeof(*gl));
+    }
+    backward_layer(A, m->w + L->w_off, gl, &W, i);
+  }
   if (fac)
     for (int i = 0; i < A->nlayers; i++) {
       const neb2_layer *L = &A->l[i];
@@ -358,6 +368,14 @@ int neb2_sample_grad(const neb2_model *m, const uint8_t *x, int label, int32_t *
     }
   free(W.mem);
   return 0;
+}
+
+int neb2_sample_grad(const neb2_model *m, const uint8_t *x, int label, int32_t *g, int8_t *fac) {
+  return sample_grad(m, x, label, g, fac, 0);
+}
+
+int neb2_sample_table_row(const neb2_model *m, const uint8_t *x, int label, int32_t *g, int8_t *fac) {
+  return sample_grad(m, x, label, g, fac, 1);
 }
 
 void neb2_model_apply(neb2_model *m, const int32_t *gs) {

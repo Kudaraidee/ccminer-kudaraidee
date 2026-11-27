@@ -80,6 +80,8 @@ int neb2_share_eval(const neb2_model *m, const neb2_dataset *ds, const uint8_t k
  * product. The consensus rules do not use this function. Returns 0, or -1 when the model's architecture is unknown or
  * memory runs out. */
 int neb2_sample_grad(const neb2_model *m, const uint8_t *x, int label, int32_t *g, int8_t *fac);
+/* Table rows use convolution gradients and compact linear factors. */
+int neb2_sample_table_row(const neb2_model *m, const uint8_t *x, int label, int32_t *g, int8_t *fac);
 
 /* The model step (section 5): gs holds the entry-wise sums of the clipped gradients of 1 .. NEB_MAX_SHARES shares. */
 void neb2_model_apply(neb2_model *m, const int32_t *gs);
