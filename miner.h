@@ -803,7 +803,7 @@ struct stratum_job {
 	uint32_t      neb_bits;
 	unsigned char neb_target[32];       // block target, LE 256-bit
 	unsigned char neb_share_target[32]; // chain share target, LE 256-bit
-	unsigned char neb_pool_target[32];  // pool target pinned when the job arrived
+	unsigned char neb_scan_target[32];  // effective share target pinned at notify
 	unsigned char neb_shares_root[32];
 	unsigned char neb_cb_prefix[128];
 	size_t        neb_cb_prefix_len;
@@ -864,6 +864,8 @@ struct stratum_ctx {
 
 	double next_diff;
 	double sharediff;
+	bool neb_has_pool_target;
+	unsigned char neb_pool_target[32];
 
 	char *session_id;
 	size_t xnonce1_size;

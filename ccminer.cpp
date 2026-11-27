@@ -1990,6 +1990,40 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 
 	pthread_mutex_lock(&stratum_work_lock);
 
+	uint8_t neb_header[80];
+	if (opt_algo == ALGO_NEBHASH) {
+		if (!sctx->job.is_nebhash || !nebhash_dataset_loaded()) {
+			applog(LOG_ERR, "Nebhash: job has no model/dataset yet");
+			pthread_mutex_unlock(&stratum_work_lock);
+			return false;
+		}
+		if (sctx->job.neb_expiry && time(NULL) >= (time_t)sctx->job.neb_expiry) {
+			applog(LOG_INFO, "Nebhash: job expired, waiting for a new one");
+			pthread_mutex_unlock(&stratum_work_lock);
+			return false;
+		}
+		if (!nebhash_have_model(sctx->job.neb_weights_hash)) {
+			if (opt_debug)
+				applog(LOG_DEBUG, "Nebhash: waiting for model %02x%02x...",
+					sctx->job.neb_weights_hash[0], sctx->job.neb_weights_hash[1]);
+			pthread_mutex_unlock(&stratum_work_lock);
+			return false;
+		}
+		/* Build before touching the published work. The job lock keeps
+		 * extranonce2 stable until it is copied into work below. */
+		if (nebhash_build_header(sctx->job.neb_version, sctx->job.neb_parent,
+			sctx->job.neb_cb_prefix, sctx->job.neb_cb_prefix_len,
+			sctx->xnonce1, sctx->xnonce1_size,
+			sctx->job.xnonce2, sctx->xnonce2_size,
+			sctx->job.neb_cb_suffix, sctx->job.neb_cb_suffix_len,
+			sctx->job.neb_branch, sctx->job.neb_branch_count, sctx->job.neb_tx_count,
+			sctx->job.neb_shares_root, sctx->job.neb_time_start,
+			sctx->job.neb_bits, neb_header) != 0) {
+			pthread_mutex_unlock(&stratum_work_lock);
+			return false;
+		}
+	}
+
 	// store the job ntime as high part of jobid
 	snprintf(work->job_id, sizeof(work->job_id), "%07x %s",
 		be32dec(sctx->job.ntime) & 0xfffffff, sctx->job.job_id);
@@ -2011,46 +2045,11 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 	work->pooln = sctx->pooln;
 
 	if (opt_algo == ALGO_NEBHASH) {
-		uint8_t bound[32];
-		size_t j;
-		bool have_bound = false;
-
-		if (!sctx->job.is_nebhash || !nebhash_dataset_loaded()) {
-			applog(LOG_ERR, "Nebhash: job has no model/dataset yet");
-			pthread_mutex_unlock(&stratum_work_lock);
-			return false;
-		}
-		if (sctx->job.neb_expiry && time(NULL) >= (time_t)sctx->job.neb_expiry) {
-			applog(LOG_INFO, "Nebhash: job expired, waiting for a new one");
-			pthread_mutex_unlock(&stratum_work_lock);
-			return false;
-		}
-		if (!nebhash_have_model(sctx->job.neb_weights_hash)) {
-			if (opt_debug)
-				applog(LOG_DEBUG, "Nebhash: waiting for model %02x%02x...",
-					sctx->job.neb_weights_hash[0], sctx->job.neb_weights_hash[1]);
-			pthread_mutex_unlock(&stratum_work_lock);
-			return false;
-		}
-		/* Use the per-work copy made above. Rolling sctx->job.xnonce2 before
-		 * this call would build a header with the NEXT extranonce2 while the
-		 * submit below echoes work->xnonce2, so the pool would recompute a
-		 * different ticket and reject every share as low difficulty. */
-		if (nebhash_build_header(sctx->job.neb_version, sctx->job.neb_parent,
-			sctx->job.neb_cb_prefix, sctx->job.neb_cb_prefix_len,
-			sctx->xnonce1, sctx->xnonce1_size,
-			work->xnonce2, sctx->xnonce2_size,
-			sctx->job.neb_cb_suffix, sctx->job.neb_cb_suffix_len,
-			sctx->job.neb_branch, sctx->job.neb_branch_count, sctx->job.neb_tx_count,
-			sctx->job.neb_shares_root, sctx->job.neb_time_start,
-			sctx->job.neb_bits, work->neb_header) != 0) {
-			pthread_mutex_unlock(&stratum_work_lock);
-			return false;
-		}
 		/* Only now advance the job's extranonce2 for the next work item. */
 		if (sctx->job.xnonce2)
 			for (i = 0; i < (int)sctx->xnonce2_size && !++sctx->job.xnonce2[i]; i++);
 
+		memcpy(work->neb_header, neb_header, sizeof(neb_header));
 		memset(work->data, 0, sizeof(work->data));
 		memcpy(work->data, work->neb_header, 80);   // data[19] = nonce cursor
 		memcpy(work->neb_model_hash, sctx->job.neb_weights_hash, 32);
@@ -2058,15 +2057,14 @@ static bool stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 		work->neb_slot = sctx->job.neb_slot;
 		work->is_nebhash = true;
 
-		/* mining.set_target carries the pool target; jobs also carry the chain
-		 * share target, used only until the first set_target arrives. */
-		memcpy(bound, sctx->job.neb_pool_target, 32);
-		for (j = 0; j < 32; j++)
-			if (bound[j]) { have_bound = true; break; }
-		if (!have_bound)
-			memcpy(bound, sctx->job.neb_share_target, 32);
-		memcpy(work->target, bound, 32);
-		work->targetdiff = nebhash_target_to_diff(bound);
+		memcpy(work->target, sctx->job.neb_scan_target, sizeof(sctx->job.neb_scan_target));
+		work->targetdiff = nebhash_target_to_diff(sctx->job.neb_scan_target);
+		if (stratum_diff != work->targetdiff) {
+			stratum_diff = work->targetdiff;
+			char diff[FORMAT_DIFF_LEN];
+			applog(LOG_WARNING, "Stratum difficulty set to %s",
+				format_diff(stratum_diff, diff, sizeof(diff)));
+		}
 		pthread_mutex_unlock(&stratum_work_lock);
 		return true;
 	}

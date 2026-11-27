@@ -71,7 +71,6 @@ std::vector<Dataset> g_datasets;
 std::mutex g_state_lock;
 std::vector<std::shared_ptr<Model>> g_models;
 uint8_t g_dataset_hash[32] = { 0 };
-uint8_t g_target[32] = { 0 };         /* set by mining.set_target */
 ScanHandle *g_scans[MAX_GPUS][NEB_MAX_SLOTS];
 char g_dataset_path[512] = { 0 };
 
@@ -386,27 +385,13 @@ int nebhash_set_model(int slot, const uint8_t hash[32],
 	return 0;
 }
 
-void nebhash_set_target(const uint8_t le[32])
-{
-	std::lock_guard<std::mutex> lock(g_state_lock);
-	memcpy(g_target, le, 32);
-}
-
-void nebhash_get_target(uint8_t le[32])
-{
-	std::lock_guard<std::mutex> lock(g_state_lock);
-	memcpy(le, g_target, 32);
-}
-
 double nebhash_target_to_diff(const uint8_t le[32])
 {
-	/* Match yiimp's nebhash_le_to_diff(): 2^256 / (target + 1). The inverse
-	 * nebhash_diff_to_target() there uses 2^256 / diff - 1, so dropping the
-	 * +1 here would report a slightly different difficulty than the pool. */
+	/* Forge-style share difficulty measures expected trials in units of 2^32. */
 	long double t = 0.0L;
 	for (int i = 31; i >= 0; i--)
 		t = t * 256.0L + le[i];
-	return (double)(ldexpl(1.0L, 256) / (t + 1.0L));
+	return (double)(ldexpl(1.0L, 224) / (t + 1.0L));
 }
 
 int nebhash_build_header(uint32_t version, const uint8_t parent[32],

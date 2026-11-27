@@ -1374,6 +1374,11 @@ bool stratum_subscribe(struct stratum_ctx *sctx)
 	if (sctx->rpc2) return true;
 	/* Pearl pools have no subscribe step (it answers error 20); authorize opens the session */
 	if (opt_algo == ALGO_PEARLHASH) return true;
+	if (opt_algo == ALGO_NEBHASH) {
+		pthread_mutex_lock(&stratum_work_lock);
+		sctx->neb_has_pool_target = false;
+		pthread_mutex_unlock(&stratum_work_lock);
+	}
 
 start:
 	const char *ua = opt_user_agent ? opt_user_agent : USER_AGENT;
@@ -1917,10 +1922,9 @@ static bool nebhash_stratum_set_target(struct stratum_ctx *sctx, json_t *params)
 		applog(LOG_ERR, "Nebhash set_target: invalid target");
 		return false;
 	}
-	/* Notify takes stratum_work_lock and then reads the target; keep the same
-	 * lock order here to avoid deadlocking against a concurrent job. */
 	pthread_mutex_lock(&stratum_work_lock);
-	nebhash_set_target(target);
+	memcpy(sctx->neb_pool_target, target, sizeof(target));
+	sctx->neb_has_pool_target = true;
 	sctx->job.diff = nebhash_target_to_diff(target);
 	sctx->next_diff = sctx->job.diff;
 	pthread_mutex_unlock(&stratum_work_lock);
@@ -1977,6 +1981,8 @@ static bool nebhash_stratum_notify(struct stratum_ctx *sctx, json_t *params)
 	unsigned char *branch = NULL;
 	uint32_t version, time_start, bits, tx_count, slot, expiry, height;
 	struct stratum_job *job = &sctx->job;
+	unsigned char parent[32], target[32], share_target[32], shares_root[32], weights_hash[32];
+	unsigned char cb_prefix[sizeof(job->neb_cb_prefix)], cb_suffix[sizeof(job->neb_cb_suffix)];
 
 	if (!json_is_object(j)) {
 		applog(LOG_ERR, "Nebhash notify: expected a job object");
@@ -1985,13 +1991,17 @@ static bool nebhash_stratum_notify(struct stratum_ctx *sctx, json_t *params)
 	job_id = json_string_value(json_object_get(j, "job_id"));
 	cp = json_string_value(json_object_get(j, "coinbase_prefix"));
 	cs = json_string_value(json_object_get(j, "coinbase_suffix"));
+	const size_t prefix_len = cp ? strlen(cp) : 0;
+	const size_t suffix_len = cs ? strlen(cs) : 0;
 	j_branch = json_object_get(j, "branch");
 	branch_count = json_array_size(j_branch);
 
 	/* job->job_id is a heap pointer here, not the fixed work->job_id buffer. */
 	if (!job_id || !*job_id || strlen(job_id) >= 64 ||
-	    !cp || (strlen(cp) & 1) || strlen(cp) / 2 > sizeof(job->neb_cb_prefix) ||
-	    !cs || (strlen(cs) & 1) || strlen(cs) / 2 > sizeof(job->neb_cb_suffix) ||
+	    !cp || (prefix_len & 1) || prefix_len / 2 > sizeof(cb_prefix) ||
+	    !cs || (suffix_len & 1) || suffix_len / 2 > sizeof(cb_suffix) ||
+	    !hex2bin(cb_prefix, cp, prefix_len / 2) ||
+	    !hex2bin(cb_suffix, cs, suffix_len / 2) ||
 	    branch_count > 4096 ||
 	    !nebhash_json_u32(json_object_get(j, "version"), &version) ||
 	    !nebhash_json_u32(json_object_get(j, "time_start"), &time_start) ||
@@ -1999,11 +2009,11 @@ static bool nebhash_stratum_notify(struct stratum_ctx *sctx, json_t *params)
 	    !nebhash_json_u32(json_object_get(j, "tx_count"), &tx_count) ||
 	    !nebhash_json_u32(json_object_get(j, "slot"), &slot) ||
 	    !nebhash_json_u32(json_object_get(j, "expiry"), &expiry) ||
-	    !nebhash_json_hex(json_object_get(j, "parent"), job->neb_parent, 32) ||
-	    !nebhash_json_hex(json_object_get(j, "target"), job->neb_target, 32) ||
-	    !nebhash_json_hex(json_object_get(j, "share_target"), job->neb_share_target, 32) ||
-	    !nebhash_json_hex(json_object_get(j, "shares_root"), job->neb_shares_root, 32) ||
-	    !nebhash_json_hex(json_object_get(j, "weights_hash"), job->neb_weights_hash, 32)) {
+	    !nebhash_json_hex(json_object_get(j, "parent"), parent, sizeof(parent)) ||
+	    !nebhash_json_hex(json_object_get(j, "target"), target, sizeof(target)) ||
+	    !nebhash_json_hex(json_object_get(j, "share_target"), share_target, sizeof(share_target)) ||
+	    !nebhash_json_hex(json_object_get(j, "shares_root"), shares_root, sizeof(shares_root)) ||
+	    !nebhash_json_hex(json_object_get(j, "weights_hash"), weights_hash, sizeof(weights_hash))) {
 		applog(LOG_ERR, "Nebhash notify: invalid job fields");
 		return false;
 	}
@@ -2027,23 +2037,37 @@ static bool nebhash_stratum_notify(struct stratum_ctx *sctx, json_t *params)
 		return false;
 	}
 
+	char *new_job_id = strdup(job_id);
+	if (!new_job_id) {
+		free(branch);
+		applog(LOG_ERR, "Nebhash notify: cannot allocate job ID");
+		return false;
+	}
+
 	pthread_mutex_lock(&stratum_work_lock);
 	free(job->job_id);
-	job->job_id = strdup(job_id);
+	job->job_id = new_job_id;
 	job->neb_version = version;
 	job->neb_time_start = time_start;
 	job->neb_bits = bits;
 	job->neb_tx_count = tx_count;
 	job->neb_slot = (uint8_t) slot;
 	job->neb_expiry = expiry;
-	job->neb_cb_prefix_len = strlen(cp) / 2;
-	job->neb_cb_suffix_len = strlen(cs) / 2;
-	hex2bin(job->neb_cb_prefix, cp, job->neb_cb_prefix_len);
-	hex2bin(job->neb_cb_suffix, cs, job->neb_cb_suffix_len);
+	job->neb_cb_prefix_len = prefix_len / 2;
+	job->neb_cb_suffix_len = suffix_len / 2;
+	memcpy(job->neb_cb_prefix, cb_prefix, job->neb_cb_prefix_len);
+	memcpy(job->neb_cb_suffix, cb_suffix, job->neb_cb_suffix_len);
+	memcpy(job->neb_parent, parent, sizeof(parent));
+	memcpy(job->neb_target, target, sizeof(target));
+	memcpy(job->neb_share_target, share_target, sizeof(share_target));
+	memcpy(job->neb_shares_root, shares_root, sizeof(shares_root));
+	memcpy(job->neb_weights_hash, weights_hash, sizeof(weights_hash));
 	free(job->neb_branch);
 	job->neb_branch = branch;
 	job->neb_branch_count = branch_count;
-	nebhash_get_target(job->neb_pool_target);
+	memcpy(job->neb_scan_target,
+		sctx->neb_has_pool_target ? sctx->neb_pool_target : job->neb_share_target,
+		sizeof(job->neb_scan_target));
 	/* extranonce2 keeps rolling for the whole session; it is zeroed only with
 	 * the job at session start (stratum_free_job). Resetting it per notify
 	 * rebuilt an already-mined header whenever a pool re-sent the same job
@@ -2054,9 +2078,7 @@ static bool nebhash_stratum_notify(struct stratum_ctx *sctx, json_t *params)
 	job->xnonce2 = job->neb_xnonce2;
 	job->height = nebhash_json_u32(json_object_get(j, "height"), &height) ? height : 0;
 	job->clean = json_object_get(j, "clean") ? json_is_true(json_object_get(j, "clean")) : true;
-	job->diff = nebhash_target_to_diff(job->neb_share_target);
-	if (!(job->diff > 0.))
-		job->diff = sctx->next_diff;
+	job->diff = nebhash_target_to_diff(job->neb_scan_target);
 	job->is_nebhash = true;
 	pthread_mutex_unlock(&stratum_work_lock);
 	return true;

@@ -87,8 +87,9 @@ Apache-2.0 (`LICENSE.NEB`) ส่วนสะพาน ccminer และ stratum
 | `mining.block` | ส่วนเสริมจาก pool ไม่บังคับ ส่งเฉพาะหลัง node ยอมรับ candidate โดย params จะเป็น `["<job_id>", "<nonce>"]` หรือ object ที่มี `job_id`, `extranonce2`, `ntime`, `nonce`, `blockhash`, `height` จากนั้น ccminer จะ log `yay!!! ... solved: N` |
 
 ฟิลด์ target ใน notify อธิบายสถานะของ chain/block ส่วนค่าที่ตัดสินว่าเป็น share
-คือ `mining.set_target` การแปลง target เป็น difficulty ใช้สูตรของ yiimp
-`2^256 / (target + 1)` ตัวเลือก `sd=` ในรหัสผ่านถูกตีความโดย pool
+คือ `mining.set_target` ส่วน difficulty ใน log และ API ใช้สเกล Forge
+`2^224 / (target + 1)` โดยหนึ่งหน่วยเท่ากับ `2^32` nonce ที่คาดว่าต้องลอง
+การตรวจแชร์ยังใช้ target 256 บิตที่ได้รับจาก pool ตัวเลือก `sd=` ในรหัสผ่านถูกตีความโดย pool
 (yiimp ใช้ scale `sd * 1e10`) miner ไม่ได้ parse ค่านี้เลย
 
 ## ความถูกต้อง

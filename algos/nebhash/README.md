@@ -89,8 +89,9 @@ project's GPLv2.
 | `mining.block` | Optional pool extension, sent only after the node accepted a candidate. Params are either `["<job_id>", "<nonce>"]` or an object with `job_id`, `extranonce2`, `ntime`, `nonce`, `blockhash`, `height`. ccminer then logs `yay!!! ... solved: N`. |
 
 The notify target fields describe chain/block state; the value that gates shares
-is `mining.set_target`. Target-to-difficulty uses yiimp's
-`2^256 / (target + 1)`. The `sd=` password option is interpreted by the pool
+is `mining.set_target`. ccminer reports Forge-style share difficulty in its
+logs and API as `2^224 / (target + 1)`, in units of `2^32` expected trials.
+Share validation uses the original 256-bit target. The `sd=` password option is interpreted by the pool
 (yiimp scale `sd * 1e10`); the miner never parses it.
 
 ## Correctness
