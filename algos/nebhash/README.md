@@ -104,6 +104,12 @@ is `mining.set_target`. Target-to-difficulty uses yiimp's
 - `NEB_NEGATIVE_CONTROL_TABLE_CLIP` deliberately clips one below `NEB_CLIP` so
   the differential test demonstrates that it detects a wrong gradient.
 
+The miner passes `max_nonce` as the exclusive end of the scan range. Each CUDA
+batch scans at most 8,192 nonces, with a shorter final batch when fewer remain.
+An empty range skips the CUDA launch. After a successful scan, the cursor holds
+the last scanned nonce so the miner loop starts the next batch at the following
+nonce when the job is unchanged.
+
 ## Usage
 
 ```bash

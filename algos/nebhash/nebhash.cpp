@@ -451,20 +451,17 @@ int nebhash_scanhash(int thr_id, struct work *work, uint32_t max_nonce,
 	if (!work->is_nebhash || !nebhash_dataset_loaded())
 		return -1;
 
+	uint32_t start = work->data[19];
+	/* The miner passes the exclusive end nonce; CUDA takes a count. */
+	if (start >= max_nonce)
+		return 0;
+	uint32_t count = max_nonce - start;
+	if (count > NEB_SCAN_CAP)
+		count = NEB_SCAN_CAP;
+
 	int slot = (int)work->neb_slot;
 	if (!ensure_scan(thr_id, slot, work->neb_model_hash))
 		return -1;
-
-	uint32_t start = work->data[19];
-	uint32_t count = max_nonce;
-	if (count == 0)
-		return 0;
-	if (count > NEB_SCAN_CAP)
-		count = NEB_SCAN_CAP;
-	if (start > UINT32_MAX - count)
-		count = UINT32_MAX - start;
-	if (count == 0)
-		return 0;
 
 	uint8_t header[80];
 	memcpy(header, work->neb_header, 80);
@@ -478,7 +475,9 @@ int nebhash_scanhash(int thr_id, struct work *work, uint32_t max_nonce,
 	}
 
 	*hashes_done = count;
-	work->data[19] = start + count;   /* deliberate uint32 wrap */
+	/* The miner loop increments the cursor for unchanged work. Leave it
+	 * on the last scanned nonce so the next batch starts immediately after it. */
+	work->data[19] = start + count - 1;
 
 	std::shared_ptr<Model> m = find_model(work->neb_model_hash);
 	int found = 0;

@@ -103,6 +103,11 @@ Apache-2.0 (`LICENSE.NEB`) ส่วนสะพาน ccminer และ stratum
 - `NEB_NEGATIVE_CONTROL_TABLE_CLIP` ตั้งค่า clip ให้ต่ำกว่า `NEB_CLIP` หนึ่ง
   เพื่อแสดงให้เห็นว่าการทดสอบ differential ตรวจพบ gradient ที่ผิด
 
+miner ส่ง `max_nonce` เป็นปลายช่วงแบบไม่รวมค่านั้น แต่ละ batch ของ CUDA สแกน
+ได้สูงสุด 8,192 nonce และลดขนาด batch สุดท้ายตามจำนวน nonce ที่เหลือ
+ถ้าช่วงว่างจะข้ามการเรียก CUDA เมื่อสแกนสำเร็จ cursor จะเก็บ nonce สุดท้ายที่สแกน
+เพื่อให้ miner เริ่ม batch ถัดไปจาก nonce ต่อมาเมื่อยังเป็น job เดิม
+
 ## การใช้งาน
 
 ```bash
