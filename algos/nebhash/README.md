@@ -228,3 +228,24 @@ share. It received 11/11 accepted shares on Yiimp and 18/18 on MeshPool.
 The first scan handle built one table on both pools. MeshPool remained
 at height 12048 during its run. The same-slot model transition was
 covered by the local replay.
+
+### Paired int16 convolution loads
+
+On an int16 convolution layer with an even number of factors, each
+aligned 32-bit read returns two adjacent signed gradients from one
+sample. The kernel adds the two factors into separate 32-bit sums
+across all 16 samples, clips each sum, and adds it to its original
+digest lane. This path comes from [tpfuemp's paired-load change](https://github.com/tpfuemp/ccminer-tpfuemp/commit/a56374932fa8674d503cbce2df84eb4d787f1973).
+
+A GTX 1050 Ti replay used the official dataset and one model captured
+from each pool. Each variant ran twice with 8,192 nonces per batch.
+The GPU was idle before each run. All runs were local replays.
+
+| Captured model | Scalar int16 | Paired int16 | Four factors per load |
+| :-- | --: | --: | --: |
+| Yiimp | 771.45 kH/s | 905.58 kH/s (+17.4%) | 928.09 kH/s (+20.3%) |
+| MeshPool | 779.91 kH/s | 902.16 kH/s (+15.7%) | 868.77 kH/s (+11.4%) |
+
+The miner uses the paired path, which improved throughput on both models.
+The integrated kernel matched the C reference hit sets for KEP1 and RET2
+over 384 nonces at five target boundaries.

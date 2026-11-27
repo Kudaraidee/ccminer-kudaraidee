@@ -183,6 +183,26 @@ __global__ void __launch_bounds__(THREADS) table_kernel(const uint8_t *__restric
             lane[f & 7] += (uint32_t)cg ^ ((uint32_t)f + base);
           }
         }
+      } else if (P.kind[i] == NARROW && (P.nw[i] & 1) == 0) {
+        // int16 factors in pairs: one 32-bit load per sample brings entries f and f+1 (low / high half; at, the
+        // row size and 2 * f are multiples of 4), halving the loads of the gather. Sums stay 32-bit, so they are
+        // exact. f = 2 * tid + 2 * THREADS * k, so the lanes are (2 * tid + j) & 7: two fixed accumulators.
+        uint32_t acc0 = 0, acc1 = 0;
+        for (int f = 2 * tid; f < P.nw[i]; f += 2 * THREADS) {
+          int G0 = 0, G1 = 0;
+#pragma unroll
+          for (int b = 0; b < NEB_NB; b++) {
+            const uint32_t v = __ldg((const uint32_t *)(rows + rb[b] + P.at[i] + 2 * f));
+            G0 += (int)(int16_t)(v & 0xffffu);
+            G1 += (int)v >> 16;
+          }
+          const int c0 = G0 < -CLIPV ? -CLIPV : (G0 > CLIPV ? CLIPV : G0);
+          const int c1 = G1 < -CLIPV ? -CLIPV : (G1 > CLIPV ? CLIPV : G1);
+          acc0 += (uint32_t)c0 ^ ((uint32_t)f + base);
+          acc1 += (uint32_t)c1 ^ ((uint32_t)(f + 1) + base);
+        }
+        lane[(2 * tid) & 7] += acc0;
+        lane[(2 * tid + 1) & 7] += acc1;
       } else {
         for (int f = tid; f < P.nw[i]; f += THREADS) {
           int G = 0;
