@@ -24,6 +24,10 @@ int xhash_core_ensure(void *handle, int epoch, int *regenerated);
 /* Compare one GPU-found nonce/mix against the CPU reference. */
 int xhash_core_selftest(void *handle, int epoch);
 
+/* Time both search-kernel variants once and keep the faster one. Returns the
+ * selected variant (0 = standard, 1 = dedup), or -1 on error. */
+int xhash_core_tune(void *handle, uint32_t throughput);
+
 /* Search [start_nonce, start_nonce + throughput). Returns 1 on a share that
  * also validates on the CPU, 0 on no share, -1 on launch failure, -2 when the
  * GPU flagged candidates that the CPU rejected. */

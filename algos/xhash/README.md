@@ -40,7 +40,26 @@ Every GPU candidate is recomputed with the canonical CPU verifier before
 submission: a kernel bug can only cause a local reject, never an invalid
 share. Once per GPU, at the first job, a synthetic header/nonce is checked
 against the CPU reference on the live DAG (the epoch-0 known-answer vector
-from the reference test suite was also used to validate the port).
+from the reference test suite was also used to validate the port). Both search
+variants are self-tested, because the faster one is selected automatically.
+
+## Kernel selection
+
+`xhash_dagger.cuh` has two search variants: `standard` issues one DAG address
+per lane, while `dedup` shares address computation across lanes (fewer
+instructions, but fewer memory requests in flight). Which one is faster
+depends on the GPU: memory-bound cards generally prefer `standard`, compute-
+bound cards prefer `dedup`. At the first job of each GPU, ccminer benchmarks
+both with an impossible target for a few batches and keeps the faster one,
+logging e.g.:
+
+```
+XHash: kernel benchmark standard 7.82 MH/s, dedup 9.85 MH/s -> dedup
+```
+
+On a GTX 1050 Ti this improved sustained hashrate from ~8.6 MH/s (`standard`
+forced) to ~9.4 MH/s (`dedup` forced). The choice is re-made whenever a GPU
+thread is reinitialized.
 
 ## Pool protocol
 

@@ -36,6 +36,7 @@ struct core_state
 	uint32_t light_items = 0;
 	uint32_t dag_items = 0;
 	int epoch = -1;
+	int kernel_variant = 0; /* selected by xhash_core_tune() */
 
 	~core_state()
 	{
@@ -195,18 +196,86 @@ extern "C" int xhash_core_selftest(void *handle, int epoch)
 
 	xhash_cuda_set_header(header.bytes);
 	xhash_cuda_set_target(target);
-	xhash_cuda_search(1, 32, s->h_results, nonce, 0);
-	if (!report_cuda_error(s, cudaGetLastError(), "self-test search")) return 0;
 
-	const uint32_t found = s->h_results->count < XHASH_MAX_SEARCH_RESULTS ?
-		s->h_results->count : XHASH_MAX_SEARCH_RESULTS;
-	for (uint32_t i = 0; i < found; ++i)
+	// Both search variants must agree with the CPU reference: the faster one
+	// is chosen by xhash_core_tune(), so a bug in either must not go unnoticed.
+	for (int v = 0; v < 2; ++v)
 	{
-		const xhash_search_result &r = s->h_results->result[i];
-		if (r.gid == 0 && mix_matches(r, expected.mix_hash)) return 1;
+		xhash_cuda_search(1, 32, s->h_results, nonce, v);
+		if (!report_cuda_error(s, cudaGetLastError(), "self-test search")) return 0;
+
+		const uint32_t found = s->h_results->count < XHASH_MAX_SEARCH_RESULTS ?
+			s->h_results->count : XHASH_MAX_SEARCH_RESULTS;
+		bool ok = false;
+		for (uint32_t i = 0; i < found; ++i)
+		{
+			const xhash_search_result &r = s->h_results->result[i];
+			if (r.gid == 0 && mix_matches(r, expected.mix_hash)) { ok = true; break; }
+		}
+		if (!ok)
+		{
+			std::fprintf(stderr, "XHash self-test FAILED for variant %d (GPU mix != CPU reference)\n", v);
+			return 0;
+		}
 	}
-	std::fprintf(stderr, "XHash self-test FAILED (GPU mix != CPU reference)\n");
-	return 0;
+	return 1;
+}
+
+extern "C" int xhash_core_tune(void *handle, uint32_t throughput)
+{
+	core_state *s = static_cast<core_state *>(handle);
+	if (!s || !s->ctx || !s->d_dag || !throughput) return -1;
+
+	const uint32_t block = SEARCH_THREADS;
+	const uint32_t grid = (throughput + block - 1) / block;
+	const unsigned batches = 8;
+	const char *const names[2] = {"standard", "dedup"};
+	double rates[2] = {0.0, 0.0};
+	int best_variant = 0;
+
+	// An impossible target makes compute_hash() reject every nonce, so the
+	// timed runs only measure kernel throughput (no result-buffer traffic).
+	unsigned char header[32];
+	for (int i = 0; i < 32; ++i) header[i] = (unsigned char)(i * 13 + 7);
+	xhash_cuda_set_header(header);
+	xhash_cuda_set_target(0);
+
+	for (int v = 0; v < 2; ++v)
+	{
+		cudaEvent_t start, stop;
+		if (cudaEventCreate(&start) != cudaSuccess) return -1;
+		if (cudaEventCreate(&stop) != cudaSuccess) { cudaEventDestroy(start); return -1; }
+
+		// Warm up both compiled variants before timing either one.
+		xhash_cuda_search(grid, block, s->h_results, 0, v);
+		if (cudaGetLastError() != cudaSuccess)
+		{
+			cudaEventDestroy(start); cudaEventDestroy(stop);
+			return -1;
+		}
+
+		cudaEventRecord(start);
+		for (unsigned b = 0; b < batches; ++b)
+			xhash_cuda_search(grid, block, s->h_results, (uint64_t)b * throughput, v);
+		cudaEventRecord(stop);
+		cudaEventSynchronize(stop);
+
+		float ms = 0.0f;
+		cudaEventElapsedTime(&ms, start, stop);
+		cudaEventDestroy(start);
+		cudaEventDestroy(stop);
+		if (ms <= 0.0f || cudaGetLastError() != cudaSuccess) continue;
+
+		// ms is milliseconds: hashes/ms -> hashes/s is x1000.
+		rates[v] = (double)batches * throughput / (double)ms * 1000.0;
+		if (rates[v] > rates[best_variant]) best_variant = v;
+	}
+
+	s->kernel_variant = best_variant;
+	std::fprintf(stderr,
+		"XHash: kernel benchmark standard %.2f MH/s, dedup %.2f MH/s -> %s\n",
+		rates[0] / 1e6, rates[1] / 1e6, names[best_variant]);
+	return best_variant;
 }
 
 extern "C" int xhash_core_search(void *handle, const unsigned char header[32], uint64_t start_nonce,
@@ -221,7 +290,7 @@ extern "C" int xhash_core_search(void *handle, const unsigned char header[32], u
 
 	const uint32_t block = SEARCH_THREADS;
 	const uint32_t grid = (throughput + block - 1) / block;
-	xhash_cuda_search(grid, block, s->h_results, start_nonce, 0);
+	xhash_cuda_search(grid, block, s->h_results, start_nonce, s->kernel_variant);
 	if (!report_cuda_error(s, cudaGetLastError(), "search")) return -1;
 
 	const uint32_t found = s->h_results->count < XHASH_MAX_SEARCH_RESULTS ?

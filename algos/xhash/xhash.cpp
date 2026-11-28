@@ -19,6 +19,7 @@
 static void   *s_core[MAX_GPUS]   = { 0 };
 static bool    s_init[MAX_GPUS]   = { 0 };
 static bool    s_selftested[MAX_GPUS] = { 0 };
+static bool    s_tuned[MAX_GPUS] = { 0 };
 static uint64_t s_cursor[MAX_GPUS] = { 0 };
 static uint32_t s_sig[MAX_GPUS]    = { 0 };
 static bool    s_sig_set[MAX_GPUS] = { 0 };
@@ -108,6 +109,13 @@ extern "C" int scanhash_xhash(int thr_id, struct work *work, uint32_t max_nonce,
 			gpulog(LOG_WARNING, thr_id, "XHash self-test FAILED (GPU/CPU mismatch)");
 	}
 
+	// Pick the faster of the two search kernels for this GPU; the DAG is up
+	// and the real throughput is known at this point.
+	if (!s_tuned[thr_id]) {
+		if (xhash_core_tune(s_core[thr_id], throughput) >= 0)
+			s_tuned[thr_id] = true;
+	}
+
 	// Reset the cursor on a genuinely new job.
 	uint32_t sig = 2166136261u;
 	for (int i = 0; i < 32; i++) { sig ^= work->kawpow_header[i]; sig *= 16777619u; }
@@ -166,6 +174,7 @@ extern "C" void free_xhash(int thr_id)
 	if (s_core[thr_id]) { xhash_core_destroy(s_core[thr_id]); s_core[thr_id] = NULL; }
 	s_sig_set[thr_id] = false;
 	s_selftested[thr_id] = false;
+	s_tuned[thr_id] = false;
 	s_epoch[thr_id] = -1;
 	s_init[thr_id] = false;
 }
