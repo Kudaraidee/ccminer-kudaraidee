@@ -32,37 +32,53 @@ slots; slot 0 is architecture 1 (KEP1, 784 inputs, 26,000 weights).
 
 | File | Role |
 | :-- | :-- |
-| `nebhash.cpp` / `nebhash.h` | ccminer bridge: dataset load, header build, scan glue, host re-verify and submit. |
+| `nebhash.cpp` / `nebhash.h` | ccminer bridge: dataset load, header build, scan selection, self-test, host re-verify and submit. |
 | `nebhash2.c` / `nebhash2.h` | Authoritative portable C reference for nebhash v2 (KEP1/RET2): model init, sample gradient, share evaluation, ticket, model step and state hashes. |
-| `nebhash2_table_cuda.cu` / `.h` | CUDA kernel actually used by the miner: one block per nonce, table of per-sample gradients, `dp4a` for the linear layers. |
+| `nebhash2_table_cuda.cu` / `.h` | CUDA scans used by the miner: the table scan (one block per nonce) and the sparse scan for attempts with at most one active sample. |
 | `nebhash2_cuda.cu` / `.h` | Earlier direct forward/backward kernel, kept for bring-up and reference; the miner does not call it. |
 | `shares.c` / `shares.h` | Portable reference for the original (v1) training-share PoW and the shared constants (`NEB_NB=16`, `NEB_CLIP=256`, ...). |
 | `cuda/blake3_device.cuh` | Shared BLAKE3 for both CUDA kernels and the host reference. The host uses the full chunk tree for dataset and model hashes. |
 | `chacha8.c` | Portable ChaCha8 used by the C reference. |
 | `LICENSE.NEB` | Apache-2.0 licence for the vendored reference code. |
 
-`NEB_SCAN_CAP` (8192 nonces per `scan_run`) keeps a scan window inside a job's
-lifetime while amortising host/device synchronisation; the hit list is
+The scan window is `targetdiff / 8` nonces per `scan_run`, clamped to
+8192..65536 (`NEB_SCAN_MIN` / `NEB_SCAN_CAP`). That keeps a scan window inside a
+job's lifetime while amortising host/device synchronisation; the hit list is
 `MAX_NONCES + 1` entries.
 
 For a linear layer the kernel stages only the `4 × cout` error words in shared
 memory and reads the input factors directly from the selected table rows. The 16 row indices are converted to 32-bit row offsets once
 per block (the builder rejects a table larger than 4 GiB), which removes a
 64-bit multiply from every row byte load. Table rows (linear factors and
-convolution weights) are read with `__ldg` through the read-only cache, and
-`sm_61` uses one warp per block. Other architectures use the configured
-block size, which defaults to 128 threads. The eight lane accumulators are reduced per warp and then summed
-once by thread 0, instead of 256 shared-memory atomics per lane. All sums are
-modulo `2^32`, so changing the order does not change the ticket.
+convolution weights) are read with `__ldg` through the read-only cache. The
+eight lane accumulators are reduced per warp and then summed once by thread 0,
+instead of 256 shared-memory atomics per lane. All sums are modulo `2^32`, so
+changing the order does not change the ticket.
+
+On Pascal (`sm_6x`) the miner times 128-thread and one-warp (32-thread) launch
+shapes per model and keeps the faster one; other architectures use 128 threads.
+Convolution rows carry a channel-activity word so samples with an all-zero
+gradient in a channel skip that channel entirely, and linear layers skip
+outputs whose error factors are zero across all 16 selected samples. The
+digest starts with the contributions of an all-zero gradient and adds the
+difference for each active output; these additions use modulo `2^32` and
+preserve the ticket.
+
+**Sparse scan.** A sample whose whole gradient is zero adds only a constant to
+the digest, and on trained models most samples are like that. An attempt with
+no active draw has one fixed digest; an attempt with exactly one active draw
+has the digest of that sample alone; both are precomputed with the table. The
+sparse scan derives the key and the 16 draws of every nonce and fully evaluates
+only the attempts with at most one active draw. Every such attempt has the same
+chance to be a share, so the reported hash rate counts evaluated attempts only,
+as the pool sees them. After each model the miner times both scans on its first
+calls and keeps the faster one; the sparse scan is used only after it has passed
+its self-test. An untrained model (including `--benchmark`) stays on the table
+scan.
 
 The scan handle caches the BLAKE3 chaining value for the first 64 bytes
 of the header and recomputes it when those bytes change. Each nonce still
 uses the final 16 bytes of the header to finish the key.
-
-For each linear layer, the kernel skips outputs whose error factors are zero
-across all 16 selected samples. The digest starts with the contributions of
-an all-zero linear gradient and adds the difference for each active output.
-These additions use modulo `2^32` and preserve the ticket.
 
 For KEP1 and RET2, the input width of each linear layer is divisible by
 eight. For `f = o * cin + q`, the digest lane `f & 7` is therefore set by
@@ -89,27 +105,33 @@ project's GPLv2.
 | `mining.block` | Optional pool extension, sent only after the node accepted a candidate. Params are either `["<job_id>", "<nonce>"]` or an object with `job_id`, `extranonce2`, `ntime`, `nonce`, `blockhash`, `height`. ccminer then logs `yay!!! ... solved: N`. |
 
 The notify target fields describe chain/block state; the value that gates shares
-is `mining.set_target`. ccminer reports Forge-style share difficulty in its
-logs and API as `2^224 / (target + 1)`, in units of `2^32` expected trials.
-Share validation uses the original 256-bit target. The `sd=` password option is interpreted by the pool
-(yiimp scale `sd * 1e10`); the miner never parses it.
+is `mining.set_target`. ccminer reports share difficulty with yiimp's
+`2^256 / (target + 1)`. Share validation uses the original 256-bit target. The
+`sd=` password option is interpreted by the pool (yiimp scale `sd * 1e10`);
+the miner never parses it.
 
 ## Correctness
 
-- The GPU table kernel is checked against the C reference with an exact-ticket
+- The GPU scans are checked against the C reference with an exact-ticket
   differential harness on `sm_61`: 384 nonces, five rank boundaries and eight
   exact tickets per case, for both model architectures and initial / trained /
   all-7 / all-(-8) / alternating weights. All cases pass.
 - Every GPU hit is recomputed on the host with `neb2_share_eval()` before a
   `mining.submit`; a kernel bug can only cause a local miss, never a bad share.
+- Every model a mining thread uploads is self-tested before use. The table scan
+  is checked at GPU ticket ranks 2 and 2−1 against the CPU tickets of 32 fixed
+  nonces, for every launch shape; the sparse scan checks its dumped tickets and
+  the same hit sets. A mismatch stops the miner; a CUDA resource failure only
+  warns. `NEBHASH_SELFTEST_FAULT=1`..`5` breaks one of these checks on purpose.
 - `NEB_NEGATIVE_CONTROL_TABLE_CLIP` deliberately clips one below `NEB_CLIP` so
   the differential test demonstrates that it detects a wrong gradient.
 
 The miner passes `max_nonce` as the exclusive end of the scan range. Each CUDA
-batch scans at most 8,192 nonces, with a shorter final batch when fewer remain.
-An empty range skips the CUDA launch. After a successful scan, the cursor holds
-the last scanned nonce so the miner loop starts the next batch at the following
-nonce when the job is unchanged.
+batch uses the adaptive window above (or the sparse window when that scan is
+selected), with a shorter final batch when fewer remain. An empty range skips
+the CUDA launch. After a successful scan, the cursor holds the last scanned
+nonce so the miner loop starts the next batch at the following nonce when the
+job is unchanged.
 
 ## Usage
 
@@ -122,6 +144,12 @@ ccminer -a nebhash \
 
 `stratum+tcps://` is accepted as an alias for `stratum+ssl://`. TLS certificate
 verification stays enabled; use `--cert` only to supply a custom CA bundle.
+
+For a synthetic, pool-independent rate use
+`ccminer -a nebhash --benchmark --neb-dataset=PATH`. It mines a seeded
+(untrained) slot-0 model with one share per `2^22` attempts and CPU-verifies
+every hit, so compare benchmark rates only with each other, not with live pool
+rates.
 
 ## Benchmark log
 

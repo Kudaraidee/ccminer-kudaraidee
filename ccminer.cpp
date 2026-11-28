@@ -5286,6 +5286,11 @@ int main(int argc, char *argv[])
 		}
 		if (!opt_quiet)
 			applog(LOG_INFO, "Nebhash dataset loaded from %s", path);
+		/* live models come from the pool; --benchmark mines a seeded slot-0 model */
+		if (opt_benchmark && nebhash_benchmark_init() != 0) {
+			applog(LOG_ERR, "nebhash: cannot set up the benchmark model");
+			return EXIT_CODE_SW_INIT_ERROR;
+		}
 	}
 
 	if (opt_background) {

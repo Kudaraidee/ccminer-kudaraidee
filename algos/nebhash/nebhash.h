@@ -20,6 +20,9 @@ int  nebhash_set_model(int slot, const uint8_t weights_hash[32],
                        const uint8_t *packed, size_t packed_len);
 int  nebhash_have_model(const uint8_t weights_hash[32]);
 
+/* --benchmark: install the seeded model of slot 0 (after the dataset is loaded). */
+int  nebhash_benchmark_init(void);
+
 /* Pool target sent by mining.set_target, as a 32-byte little-endian integer. */
 double nebhash_target_to_diff(const uint8_t le[32]);
 

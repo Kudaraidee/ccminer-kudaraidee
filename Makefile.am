@@ -288,6 +288,8 @@ algos/nebhash/nebhash2_cuda.o: algos/nebhash/nebhash2_cuda.cu algos/nebhash/nebh
 		algos/nebhash/nebhash2.h cuda/blake3_device.cuh
 	$(NVCC) $(nvcc_FLAGS) -o $@ -c $<
 
+# No --maxrregcount for this TU: the kernel's __launch_bounds__ controls the
+# register budget, including the one-warp Pascal shape.
 algos/nebhash/nebhash2_table_cuda.o: algos/nebhash/nebhash2_table_cuda.cu algos/nebhash/nebhash2_table_cuda.h \
 		algos/nebhash/nebhash2.h cuda/blake3_device.cuh
 	$(NVCC) $(nvcc_FLAGS) -o $@ -c $<

@@ -32,36 +32,49 @@ architecture 1 (KEP1, 784 inputs, 26,000 weights)
 
 | ไฟล์ | บทบาท |
 | :-- | :-- |
-| `nebhash.cpp` / `nebhash.h` | สะพานเชื่อม ccminer: โหลดชุดข้อมูล, สร้าง header, เชื่อมการสแกน, ตรวจซ้ำบน host และส่งงาน |
+| `nebhash.cpp` / `nebhash.h` | สะพานเชื่อม ccminer: โหลดชุดข้อมูล, สร้าง header, เลือกวิธีสแกน, self-test, ตรวจซ้ำบน host และส่งงาน |
 | `nebhash2.c` / `nebhash2.h` | C reference ที่เป็นแหล่งความจริงสำหรับ nebhash v2 (KEP1/RET2): ตั้งค่าโมเดล, gradient ของตัวอย่าง, ประเมิน share, ticket, model step และ state hash |
-| `nebhash2_table_cuda.cu` / `.h` | CUDA kernel ที่ miner ใช้จริง: one block ต่อ nonce, ตาราง gradient ต่อตัวอย่าง, ใช้ `dp4a` สำหรับ linear layer |
+| `nebhash2_table_cuda.cu` / `.h` | CUDA scan ที่ miner ใช้จริง: table scan (one block ต่อ nonce) และ sparse scan สำหรับ attempt ที่มีตัวอย่าง active ไม่เกินหนึ่งตัว |
 | `nebhash2_cuda.cu` / `.h` | kernel แบบ forward/backward ตรง ๆ รุ่นก่อนหน้า เก็บไว้สำหรับการเริ่มต้นและอ้างอิง miner ไม่ได้เรียกใช้ |
 | `shares.c` / `shares.h` | reference แบบพกพาของ PoW training-share รุ่นเดิม (v1) และค่าคงที่ร่วม (`NEB_NB=16`, `NEB_CLIP=256`, ...) |
 | `cuda/blake3_device.cuh` | BLAKE3 กลางสำหรับ CUDA kernel ทั้งสองตัวและ C reference ฝั่ง host ใช้ chunk tree เต็มรูปแบบสำหรับ hash ชุดข้อมูลและโมเดล |
 | `chacha8.c` | ChaCha8 แบบพกพาที่ C reference ใช้ |
 | `LICENSE.NEB` | ใบอนุญาต Apache-2.0 สำหรับโค้ด reference ที่นำมารวมไว้ |
 
-`NEB_SCAN_CAP` (8192 nonces ต่อ `scan_run`) ช่วยให้หน้าต่างการสแกนอยู่ภายใน
-อายุของงาน ขณะเดียวกันก็ลดความถี่ในการซิงก์ระหว่าง host กับ device รายการ hit
-มีขนาด `MAX_NONCES + 1` รายการ
+หน้าต่างการสแกนคือ `targetdiff / 8` nonce ต่อ `scan_run` โดยจำกัดไว้ที่
+8192..65536 (`NEB_SCAN_MIN` / `NEB_SCAN_CAP`) ช่วยให้หน้าต่างอยู่ภายในอายุของงาน
+ขณะเดียวกันก็ลดความถี่ในการซิงก์ระหว่าง host กับ device รายการ hit มีขนาด
+`MAX_NONCES + 1` รายการ
 
 สำหรับ linear layer kernel จะจัดเก็บเฉพาะ error words `4 × cout` ไว้ใน shared
 memory และอ่าน input factor จากแถวที่เลือกในตารางโดยตรง ดัชนีแถวทั้ง 16 ตัวถูกแปลงเป็น row offset แบบ 32 บิตเพียงครั้งเดียวต่อ
 block (ตัว build จะปฏิเสธตารางที่ใหญ่เกิน 4 GiB) จึงตัดการคูณ 64 บิตออกจากทุก
 การโหลดไบต์ของแถว ข้อมูลในแถวทั้ง linear factor และ convolution weight อ่านผ่าน
-read-only cache ด้วย `__ldg` บน `sm_61` ใช้หนึ่ง warp ต่อ block
-ส่วนสถาปัตยกรรมอื่นใช้ขนาด block ที่ตั้งไว้ โดยค่าเริ่มต้นคือ 128 threads ตัว accumulator ของ lane ทั้งแปดถูกรวมต่อ
+read-only cache ด้วย `__ldg` ตัว accumulator ของ lane ทั้งแปดถูกรวมต่อ
 warp แล้ว thread 0 รวมอีกครั้ง แทนการใช้ shared-memory atomic 256 ครั้งต่อ lane
 ผลบวกทั้งหมดเป็น modulo `2^32` ดังนั้นการเปลี่ยนลำดับการบวกไม่ทำให้ ticket เปลี่ยน
+
+บน Pascal (`sm_6x`) miner จะจับเวลา launch shape แบบ 128 threads และแบบหนึ่ง
+warp (32 threads) ต่อโมเดลแล้วเลือกแบบที่เร็วกว่า ส่วนสถาปัตยกรรมอื่นใช้ 128
+threads แถว convolution มีคำ activity ของ channel จึงข้าม channel ที่ gradient
+เป็นศูนย์ทุกตัวอย่าง และ linear layer ข้าม output ที่ error factor เป็นศูนย์ครบ
+16 ตัวอย่างที่เลือก โดยเริ่มจากผลรวมใน digest ของ gradient ที่เป็นศูนย์ทุกค่า
+แล้วบวกส่วนต่างเฉพาะส่วนที่ยังต้องคำนวณ การบวกแบบ modulo `2^32` ทำให้ได้ ticket
+เดิม
+
+**Sparse scan.** ตัวอย่างที่ gradient ทั้งหมดเป็นศูนย์จะบวกเฉพาะค่าคงที่เข้า digest
+และโมเดลที่ผ่านการเทรนแล้วตัวอย่างส่วนใหญ่เป็นแบบนั้น attempt ที่ไม่มีตัวอย่าง active
+เลยจะมี digest คงที่ และ attempt ที่มีตัวอย่าง active หนึ่งตัวจะมี digest ของตัวอย่างนั้น
+เพียงตัวเดียว โดยค่าทั้งสองคำนวณล่วงหน้าจากตาราง sparse scan สร้าง key และการสุ่ม
+16 ตัวของทุก nonce แล้วประเมินเฉพาะ attempt ที่มี active ไม่เกินหนึ่งตัว ทุก attempt
+มีโอกาสเป็น share เท่ากัน ดังนั้นอัตราที่รายงานนับเฉพาะ attempt ที่ประเมินจริง
+ตามที่ pool เห็น หลังเปลี่ยนโมเดล miner จะจับเวลาทั้งสองวิธีในช่วงแรกแล้วเลือกวิธีที่
+เร็วกว่า และจะใช้ sparse scan ก็ต่อเมื่อผ่าน self-test โมเดลที่ยังไม่ได้เทรน
+(รวมถึง `--benchmark`) จะอยู่กับ table scan
 
 ตัวสแกนเก็บค่า BLAKE3 chaining value ของ header 64 ไบต์แรกไว้ใช้ซ้ำ
 และคำนวณใหม่เมื่อข้อมูลส่วนนี้เปลี่ยน แต่ละ nonce ใช้ 16 ไบต์ท้ายของ header
 เพื่อคำนวณ key ให้เสร็จ
-
-ในแต่ละ linear layer ตัวสแกนข้าม output ที่ error factor เป็นศูนย์ครบทั้ง
-16 ตัวอย่างที่เลือก โดยเริ่มจากผลรวมใน digest ของ linear gradient ที่เป็นศูนย์
-ทุกค่า แล้วบวกส่วนต่างเฉพาะ output ที่ยังต้องคำนวณ การบวกแบบ modulo
-`2^32` ทำให้ได้ ticket เดิม
 
 ความกว้างอินพุตของแต่ละ linear layer ใน KEP1 และ RET2 หารแปดลงตัว
 ดังนั้นสำหรับดัชนี `f = o * cin + q` ช่อง digest `f & 7` จึงขึ้นอยู่กับ
@@ -87,27 +100,33 @@ Apache-2.0 (`LICENSE.NEB`) ส่วนสะพาน ccminer และ stratum
 | `mining.block` | ส่วนเสริมจาก pool ไม่บังคับ ส่งเฉพาะหลัง node ยอมรับ candidate โดย params จะเป็น `["<job_id>", "<nonce>"]` หรือ object ที่มี `job_id`, `extranonce2`, `ntime`, `nonce`, `blockhash`, `height` จากนั้น ccminer จะ log `yay!!! ... solved: N` |
 
 ฟิลด์ target ใน notify อธิบายสถานะของ chain/block ส่วนค่าที่ตัดสินว่าเป็น share
-คือ `mining.set_target` ส่วน difficulty ใน log และ API ใช้สเกล Forge
-`2^224 / (target + 1)` โดยหนึ่งหน่วยเท่ากับ `2^32` nonce ที่คาดว่าต้องลอง
-การตรวจแชร์ยังใช้ target 256 บิตที่ได้รับจาก pool ตัวเลือก `sd=` ในรหัสผ่านถูกตีความโดย pool
-(yiimp ใช้ scale `sd * 1e10`) miner ไม่ได้ parse ค่านี้เลย
+คือ `mining.set_target` ส่วน difficulty ใน log และ API ใช้ตาม yiimp คือ
+`2^256 / (target + 1)` การตรวจแชร์ยังใช้ target 256 บิตที่ได้รับจาก pool ตัวเลือก
+`sd=` ในรหัสผ่านถูกตีความโดย pool (yiimp ใช้ scale `sd * 1e10`) miner ไม่ได้ parse
+ค่านี้เลย
 
 ## ความถูกต้อง
 
-- kernel ตารางบน GPU ถูกตรวจเทียบกับ C reference ด้วยชุดทดสอบ differential
+- การสแกนบน GPU ถูกตรวจเทียบกับ C reference ด้วยชุดทดสอบ differential
   แบบเทียบ ticket ทุกตัวบน `sm_61`: 384 nonces, ห้าขอบเขต rank และ ticket ที่
   ตรงเป๊ะแปดตัวต่อกรณี สำหรับโมเดลทั้งสอง architecture และน้ำหนักแบบ
   initial / trained / all-7 / all-(-8) / alternating ทุกกรณีผ่าน
 - ทุกครั้งที่ GPU พบ hit จะถูกคำนวณซ้ำบน host ด้วย `neb2_share_eval()` ก่อน
   `mining.submit` ดังนั้นข้อผิดพลาดของ kernel อาจทำให้พลาด share ในเครื่อง
   แต่ไม่มีทางส่ง share ผิดไปยัง pool
+- ทุกโมเดลที่ thread ของ miner อัปโหลดจะถูก self-test ก่อนใช้งาน table scan
+  ตรวจ hit ที่ rank 2 และ 2−1 เทียบกับ ticket จาก C reference ของ 32 nonce คงที่
+  ทุก launch shape ส่วน sparse scan ตรวจ ticket ที่ dump และ hit set เดียวกัน
+  ถ้าไม่ตรง miner จะหยุดทันที ความล้มเหลวด้านทรัพยากร CUDA จะเตือนอย่างเดียว
+  `NEBHASH_SELFTEST_FAULT=1`..`5` จำลองความผิดพลาดเพื่อทดสอบ
 - `NEB_NEGATIVE_CONTROL_TABLE_CLIP` ตั้งค่า clip ให้ต่ำกว่า `NEB_CLIP` หนึ่ง
   เพื่อแสดงให้เห็นว่าการทดสอบ differential ตรวจพบ gradient ที่ผิด
 
-miner ส่ง `max_nonce` เป็นปลายช่วงแบบไม่รวมค่านั้น แต่ละ batch ของ CUDA สแกน
-ได้สูงสุด 8,192 nonce และลดขนาด batch สุดท้ายตามจำนวน nonce ที่เหลือ
-ถ้าช่วงว่างจะข้ามการเรียก CUDA เมื่อสแกนสำเร็จ cursor จะเก็บ nonce สุดท้ายที่สแกน
-เพื่อให้ miner เริ่ม batch ถัดไปจาก nonce ต่อมาเมื่อยังเป็น job เดิม
+miner ส่ง `max_nonce` เป็นปลายช่วงแบบไม่รวมค่านั้น แต่ละ batch ของ CUDA ใช้
+หน้าต่างที่ปรับตามด้านบน (หรือหน้าต่าง sparse เมื่อเลือกวิธีนั้น) และลดขนาด batch
+สุดท้ายตามจำนวน nonce ที่เหลือ ถ้าช่วงว่างจะข้ามการเรียก CUDA เมื่อสแกนสำเร็จ
+cursor จะเก็บ nonce สุดท้ายที่สแกนเพื่อให้ miner เริ่ม batch ถัดไปจาก nonce ต่อมา
+เมื่อยังเป็น job เดิม
 
 ## การใช้งาน
 
@@ -120,6 +139,11 @@ ccminer -a nebhash \
 
 `stratum+tcps://` ใช้เป็น alias ของ `stratum+ssl://` ได้ การตรวจสอบใบรับรอง
 TLS ยังเปิดอยู่เสมอ ใช้ `--cert` เฉพาะเพื่อระบุ CA bundle ที่กำหนดเอง
+
+สำหรับอัตราทดสอบที่ไม่พึ่ง pool ใช้
+`ccminer -a nebhash --benchmark --neb-dataset=PATH` โดยจะขุดโมเดล slot 0
+แบบสุ่มที่ยังไม่ได้เทรน มี share หนึ่งต่อ `2^22` attempt และตรวจทุก hit บน CPU
+จึงควรเทียบอัตรา benchmark กับ benchmark ด้วยกันเท่านั้น ไม่ใช่อัตราการขุดจริง
 
 ## บันทึกความเร็ว
 

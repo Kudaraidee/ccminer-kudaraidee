@@ -10,6 +10,7 @@
 #include <cuda_runtime.h>
 #include <stdlib.h>
 #include <string.h>
+#include <algorithm>
 #include <thread>
 #include <vector>
 #include "nebhash2.h"
@@ -19,6 +20,11 @@
 #define THREADS 128
 #endif
 #define CHUNK 65536u  // attempts per launch
+// sm_6x: the launch shape (THREADS or 32 threads per attempt) is chosen per model. After each build, launches of at
+// least TUNE_MIN attempts alternate the two shapes, timed after one warm-up, until each has TUNE_ATTEMPTS; the faster
+// is kept. Both shapes give the same tickets, and the timed launches are real work.
+#define TUNE_MIN 1024u
+#define TUNE_ATTEMPTS 262144u
 
 __device__ __forceinline__ uint32_t rotl32(uint32_t x, int n) { return (x << n) | (x >> (32 - n)); }
 
@@ -49,6 +55,9 @@ struct TPlan {
   int sh_d[NEB2_MAX_LAYERS], sh_in[NEB2_MAX_LAYERS];   // linear: error words in shared; sh_in is unused (rows are reloaded)
   int row, shared_words;
   uint32_t linear_zero[8];
+  // conv layers: blk = weights per output channel; am = offset of the layer's channel-activity word in a row (bit o:
+  // some weight of output channel o has a non-zero gradient for this sample), -1 when cout > 32 (no mask)
+  int blk[NEB2_MAX_LAYERS], am[NEB2_MAX_LAYERS];
 };
 static __device__ __constant__ TPlan P;
 
@@ -71,13 +80,53 @@ __global__ void header_prefix(const uint32_t *header, uint32_t *cv) {
   blake3_compress(blake3_iv(), first, 0, 64, BLAKE3_CHUNK_START, cv);
 }
 
-template <int BlockThreads>
+// One linear layer of an attempt (NT = threads per block). With FIXED (cin % 8 == 0; NT % 8 == 0), every entry f = o * cin + q of
+// this thread has f & 7 == q & 7 == tid & 7, so it adds into ONE lane: a plain accumulator replaces the runtime-indexed
+// lane[f & 7], which ptxas turned into an 8-way compare + predicated read and write per entry. Sums are mod 2^32, so
+// the order of the additions does not change the ticket. !FIXED keeps the per-entry lane index.
+static_assert(THREADS % 8 == 0, "the fixed lane index needs THREADS % 8 == 0");  // NT: 128 or 32
+template <int NT, bool FIXED>
+__device__ __forceinline__ void linear_layer(const uint8_t *__restrict__ rows, const uint32_t *rb, const int32_t *S,
+                                             int i, int tid, const int *act, int nact, uint32_t base, uint32_t *lane) {
+  const int cin = P.cin[i];
+  const int xat = P.at[i] + P.cout[i];
+  uint32_t acc = 0;
+  for (int q = tid; q < cin; q += NT) {
+    int32_t x[4];
+    for (int w = 0; w < 4; w++) {
+      uint32_t v = 0;
+      for (int b = 0; b < 4; b++)
+        v |= (uint32_t)__ldg(&rows[rb[4 * w + b] + xat + q]) << (8 * b);
+      x[w] = (int32_t)v;
+    }
+    for (int j = 0; j < nact; j++) {
+      const int o = act[j];
+      const int32_t *d = S + P.sh_d[i] + 4 * o;
+      int G = 0;
+      G = __dp4a(d[0], x[0], G);
+      G = __dp4a(d[1], x[1], G);
+      G = __dp4a(d[2], x[2], G);
+      G = __dp4a(d[3], x[3], G);
+      const uint32_t f = (uint32_t)(o * cin + q);
+      const int cg = G < -CLIPV ? -CLIPV : (G > CLIPV ? CLIPV : G);
+      const uint32_t v = ((uint32_t)cg ^ (f + base)) - (f + base);
+      if (FIXED) acc += v; else lane[f & 7] += v;
+    }
+  }
+  if (FIXED) lane[tid & 7] += acc;
+}
+
+// Linear layer, two inputs per thread (needs cin % 8 == 0 and an even xat): one 16-bit load per sample brings
+// x[q] and x[q+1] of that sample, so 16 loads serve two input columns instead of 32 byte loads. Bytes of four
+// samples are transposed with PRMT into the sample-packed words the dp4a takes (byte k = sample 4w + k), exactly the
+// words the byte-load path builds. Lane of every entry: q & 7 = (2 * tid + j) & 7, two fixed accumulators.
+template <int NT>
 __device__ __forceinline__ void linear_layer_pairs(const uint8_t *__restrict__ rows, const uint32_t *rb, const int32_t *S,
-                                                   int i, int tid, const int *act, int nact, uint32_t base, uint32_t sums[2]) {
+                                                   int i, int tid, const int *act, int nact, uint32_t base, uint32_t *lane) {
   const int cin = P.cin[i];
   const int xat = P.at[i] + P.cout[i];
   uint32_t acc0 = 0, acc1 = 0;
-  for (int q = 2 * tid; q < cin; q += 2 * BlockThreads) {
+  for (int q = 2 * tid; q < cin; q += 2 * NT) {
     int32_t x0[4], x1[4];
 #pragma unroll
     for (int w = 0; w < 4; w++) {
@@ -104,60 +153,32 @@ __device__ __forceinline__ void linear_layer_pairs(const uint8_t *__restrict__ r
       acc1 += ((uint32_t)c1 ^ (f1 + base)) - (f1 + base);
     }
   }
-  sums[0] += acc0;
-  sums[1] += acc1;
+  lane[(2 * tid) & 7] += acc0;
+  lane[(2 * tid + 1) & 7] += acc1;
 }
 
-template <int BlockThreads>
-__device__ __forceinline__ void linear_layer_quads(
-    const uint8_t *__restrict__ rows, const uint32_t *rb, const int32_t *S,
-    int i, int tid, const int *act, int nact, uint32_t base, uint32_t sums[4]) {
-  const int cin = P.cin[i];
-  const int xat = P.at[i] + P.cout[i];
-  uint32_t accum[4] = {};
-  for (int q = 4 * tid; q < cin; q += 4 * BlockThreads) {
-    int32_t x[4][4];
-#pragma unroll
-    for (int w = 0; w < 4; ++w) {
-      const uint32_t a = __ldg((const uint32_t *)(rows + rb[4 * w] + xat + q));
-      const uint32_t b = __ldg((const uint32_t *)(rows + rb[4 * w + 1] + xat + q));
-      const uint32_t c = __ldg((const uint32_t *)(rows + rb[4 * w + 2] + xat + q));
-      const uint32_t d = __ldg((const uint32_t *)(rows + rb[4 * w + 3] + xat + q));
-      const uint32_t ab0 = __byte_perm(a,b,0x5140), cd0 = __byte_perm(c,d,0x5140);
-      const uint32_t ab1 = __byte_perm(a,b,0x7362), cd1 = __byte_perm(c,d,0x7362);
-      x[0][w] = (int32_t)__byte_perm(ab0,cd0,0x5410);
-      x[1][w] = (int32_t)__byte_perm(ab0,cd0,0x7632);
-      x[2][w] = (int32_t)__byte_perm(ab1,cd1,0x5410);
-      x[3][w] = (int32_t)__byte_perm(ab1,cd1,0x7632);
-    }
-    for (int j = 0; j < nact; ++j) {
-      const int o = act[j];
-      const int32_t *d = S + P.sh_d[i] + 4 * o;
-#pragma unroll
-      for (int p = 0; p < 4; ++p) {
-        int gradient = __dp4a(d[0],x[p][0],0);
-        gradient = __dp4a(d[1],x[p][1],gradient);
-        gradient = __dp4a(d[2],x[p][2],gradient);
-        gradient = __dp4a(d[3],x[p][3],gradient);
-        const uint32_t salt=(uint32_t)(o * cin + q + p) + base;
-        const int clipped = gradient < -CLIPV ? -CLIPV : (gradient > CLIPV ? CLIPV : gradient);
-        accum[p] += ((uint32_t)clipped ^ salt) - salt;
-      }
-    }
-  }
-#pragma unroll
-  for (int p = 0; p < 4; ++p) sums[p] += accum[p];
-}
-
-template <int BlockThreads>
-__global__ void __launch_bounds__(BlockThreads) table_kernel(const uint8_t *__restrict__ rows, uint32_t n,
+// Launch bounds: sm_6x runs 8 blocks of 128 threads per SM (64 registers; this file is built without --maxrregcount,
+// see the build rules) or 32 blocks of 32; sm_75 and newer keep the plain bound.
+#ifndef NEB_SM6X_MINB
+#define NEB_SM6X_MINB 8
+#endif
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 700
+#define NEB_TABLE_BOUNDS __launch_bounds__(NT, NT == 32 ? 32 : NEB_SM6X_MINB)
+#else
+#define NEB_TABLE_BOUNDS __launch_bounds__(NT)
+#endif
+template <int NT>
+__global__ void NEB_TABLE_BOUNDS table_kernel(const uint8_t *__restrict__ rows, uint32_t n,
                                                         const uint32_t *__restrict__ h0, uint32_t start,
                                                         const uint32_t *__restrict__ bound, uint32_t *hits,
                                                         uint32_t max_hits, const uint32_t *__restrict__ cv) {
   extern __shared__ int32_t S[];  // per linear layer: cout x 4 words of errors (inputs reloaded from rows)
   __shared__ uint32_t key[8], idx[NEB_NB], lanes[8];
-  __shared__ uint32_t wsum[8][BlockThreads / 32];
+  __shared__ uint32_t wsum[8][NT / 32];
   __shared__ int active[NEB2_MAX_LAYERS][32], active_count[NEB2_MAX_LAYERS];
+  // conv: bit b of cm[i][o] = sample b has a non-zero gradient in output channel o of layer i; a sample whose channel
+  // is inactive contributes exact zeros to that channel's weights, so its loads are skipped
+  __shared__ uint32_t cm[NEB2_MAX_LAYERS][32], smask[NEB2_MAX_LAYERS][NEB_NB];
   const int tid = threadIdx.x;
   const uint32_t nonce = start + blockIdx.x;
   if (tid < 8) lanes[tid] = 0;
@@ -175,70 +196,140 @@ __global__ void __launch_bounds__(BlockThreads) table_kernel(const uint8_t *__re
   uint32_t rb[NEB_NB];
 #pragma unroll
   for (int b = 0; b < NEB_NB; b++) rb[b] = idx[b] * (uint32_t)P.row;
-  // Only the cout error words need staging. The cin input words are loaded once
-  // per input element and reused across all outputs, so shared memory stays tiny
-  // and many more blocks fit on an SM. The row bytes and their packing are the
-  // same as before; only the loop order changes, and the lane sums are mod 2^32.
-  if (BlockThreads == 32) {
-    // Pack the active outputs in lane order without a separate serial pass.
-    for (int i = 0; i < P.nlayers; i++) {
-      if (P.kind[i] != LINEAR || tid >= 32) continue;
-      uint32_t used = 0;
-      if (tid < P.cout[i]) {
-#pragma unroll
-        for (int w = 0; w < 4; ++w) {
-          uint32_t bits = 0;
-#pragma unroll
-          for (int b = 0; b < 4; ++b)
-            bits |= (uint32_t)__ldg(&rows[rb[4 * w + b] + P.at[i] + tid]) << (8 * b);
-          S[P.sh_d[i] + 4 * tid + w] = (int32_t)bits;
-          used |= bits;
-        }
-      }
-      const uint32_t mask = __ballot_sync(0xffffffffu, used != 0);
-      if (used) active[i][__popc(mask & ((1u << tid) - 1))] = tid;
-      if (tid == 0) active_count[i] = __popc(mask);
-    }
-  } else {
-    for (int i = 0; i < P.nlayers; i++) {
-      if (P.kind[i] != LINEAR) continue;
-      for (int o = tid; o < P.cout[i]; o += BlockThreads) {
-        for (int w = 0; w < 4; w++) {
-          uint32_t v = 0;
-          for (int b = 0; b < 4; b++)
-            v |= (uint32_t)__ldg(&rows[rb[4 * w + b] + P.at[i] + o]) << (8 * b);
-          S[P.sh_d[i] + 4 * o + w] = (int32_t)v;
-        }
+  // Only the cout error words are staged; the cin input words are loaded once per input element and reused across
+  // all outputs, so shared memory stays small. Lane sums are mod 2^32, so the loop order does not matter.
+  for (int i = 0; i < P.nlayers; i++) {
+    if (P.kind[i] != LINEAR) continue;
+    for (int o = tid; o < P.cout[i]; o += NT) {
+      for (int w = 0; w < 4; w++) {
+        uint32_t v = 0;
+        for (int b = 0; b < 4; b++)
+          v |= (uint32_t)__ldg(&rows[rb[4 * w + b] + P.at[i] + o]) << (8 * b);
+        S[P.sh_d[i] + 4 * o + w] = (int32_t)v;
       }
     }
-    __syncthreads();
-    if (tid < P.nlayers && P.kind[tid] == LINEAR) {
-      int count = 0;
-      for (int o = 0; o < P.cout[tid]; o++) {
-        const int32_t *d = S + P.sh_d[tid] + 4 * o;
-        if ((d[0] | d[1] | d[2] | d[3]) != 0) active[tid][count++] = o;
-      }
-      active_count[tid] = count;
+  }
+  if (tid < NEB_NB)
+    for (int i = 0; i < P.nlayers; i++)
+      if (P.kind[i] != LINEAR && P.am[i] >= 0)
+        smask[i][tid] = __ldg((const uint32_t *)(rows + idx[tid] * (uint32_t)P.row + P.am[i]));
+  __syncthreads();
+  if (tid < P.nlayers && P.kind[tid] == LINEAR) {
+    int count = 0;
+    for (int o = 0; o < P.cout[tid]; o++) {
+      const int32_t *d = S + P.sh_d[tid] + 4 * o;
+      if ((d[0] | d[1] | d[2] | d[3]) != 0) active[tid][count++] = o;
+    }
+    active_count[tid] = count;
+  }
+  // the channel masks: warps 1.. while warp 0 compacts the linear errors; a one-warp block does both in turn
+  if (NT == 32 || tid >= 32) {
+    const int o = NT == 32 ? tid : tid - 32;
+    for (int i = 0; i < P.nlayers; i++) {
+      if (P.kind[i] == LINEAR || P.am[i] < 0 || o >= P.cout[i]) continue;
+      uint32_t m = 0;
+#pragma unroll
+      for (int b = 0; b < NEB_NB; b++) m |= ((smask[i][b] >> o) & 1u) << b;
+      cm[i][o] = m;
     }
   }
   __syncthreads();
-  // Group sums are assigned to their original lanes just before warp reduction.
-  uint32_t scalar_sum = 0;
-  uint32_t quad_sum[4] = {};
-  uint32_t pair_sum[2] = {};
+  uint32_t lane[8] = {0, 0, 0, 0, 0, 0, 0, 0};
   for (int i = 0; i < P.nlayers; i++) {
     const uint32_t base = 7919u * (uint32_t)(i + 1);
     if (P.kind[i] == LINEAR) {
-      if (BlockThreads == 32 && ((P.at[i] + P.cout[i]) & 3) == 0)
-        linear_layer_quads<BlockThreads>(rows, rb, S, i, tid, active[i], active_count[i], base, quad_sum);
+      if ((P.cin[i] & 7) == 0 && ((P.at[i] + P.cout[i]) & 1) == 0)
+        linear_layer_pairs<NT>(rows, rb, S, i, tid, active[i], active_count[i], base, lane);
+      else if ((P.cin[i] & 7) == 0)
+        linear_layer<NT, true>(rows, rb, S, i, tid, active[i], active_count[i], base, lane);
       else
-        linear_layer_pairs<BlockThreads>(rows, rb, S, i, tid, active[i], active_count[i], base, pair_sum);
+        linear_layer<NT, false>(rows, rb, S, i, tid, active[i], active_count[i], base, lane);
     } else {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 700
+      if (P.kind[i] == NARROW && P.am[i] >= 0 && (P.blk[i] & 7) == 0 && P.blk[i] <= 64) {
+        // Pascal: one warp per channel, lane ln holds entries f, f + 1 (f = o * blk + 2 * ln), one 32-bit load per
+        // sample active in the channel.
+        const int ln = tid & 31, half = P.blk[i] >> 1;
+        uint32_t acc0 = 0, acc1 = 0;
+        if (ln < half) {
+          for (int o = tid >> 5; o < P.cout[i]; o += NT / 32) {
+            const int f = o * P.blk[i] + 2 * ln;
+            const uint8_t *rp = rows + P.at[i] + 2 * f;
+            int G0 = 0, G1 = 0;
+            uint32_t m = cm[i][o];
+            while (m) {
+              int bb[4];
+#pragma unroll
+              for (int u = 0; u < 4; u++) { bb[u] = m ? __ffs(m) - 1 : -1; m &= m - 1; }
+              uint32_t v[4];
+#pragma unroll
+              for (int u = 0; u < 4; u++)
+                v[u] = bb[u] >= 0 ? __ldg((const uint32_t *)(rp + idx[bb[u]] * (uint32_t)P.row)) : 0u;
+#pragma unroll
+              for (int u = 0; u < 4; u++) { G0 += (int)(int16_t)(v[u] & 0xffffu); G1 += (int)v[u] >> 16; }
+            }
+            const int c0 = G0 < -CLIPV ? -CLIPV : (G0 > CLIPV ? CLIPV : G0);
+            const int c1 = G1 < -CLIPV ? -CLIPV : (G1 > CLIPV ? CLIPV : G1);
+            acc0 += (uint32_t)c0 ^ ((uint32_t)f + base);
+            acc1 += (uint32_t)c1 ^ ((uint32_t)(f + 1) + base);
+          }
+        }
+        lane[(2 * ln) & 7] += acc0;
+        lane[(2 * ln + 1) & 7] += acc1;
+      } else
+#else
+      if (P.kind[i] == NARROW && P.am[i] >= 0 && (P.blk[i] & 7) == 0 && P.blk[i] <= 128) {
+        // A sample whose output channel o is inactive (no non-zero gradient in the channel's blk weights) adds exact
+        // zeros there, so each channel loads only the samples active in it (cm[i][o]). A channel is blk / 4 lanes of
+        // one 64-bit load each (entries f .. f + 3, f = o * blk + 4 * l), and a warp takes 32 / (blk / 4) channels
+        // side by side. blk % 8 == 0 keeps the lanes (4 * l + j) & 7 fixed per thread.
+        const int ln = tid & 31, q = P.blk[i] >> 2, groups = 32 / q;
+        const int g = ln / q, l = ln - g * q;
+        uint32_t acc0 = 0, acc1 = 0, acc2 = 0, acc3 = 0;
+        if (g < groups) {
+          for (int o = (tid >> 5) * groups + g; o < P.cout[i]; o += (NT / 32) * groups) {
+            const int f = o * P.blk[i] + 4 * l;
+            const uint8_t *rp = rows + P.at[i] + 2 * f;
+            int G0 = 0, G1 = 0, G2 = 0, G3 = 0;
+            uint32_t m = cm[i][o];
+            while (m) {
+              int bb[4];
+#pragma unroll
+              for (int u = 0; u < 4; u++) { bb[u] = m ? __ffs(m) - 1 : -1; m &= m - 1; }
+              uint2 v[4];
+#pragma unroll
+              for (int u = 0; u < 4; u++)
+                v[u] = bb[u] >= 0 ? __ldg((const uint2 *)(rp + idx[bb[u]] * (uint32_t)P.row)) : make_uint2(0u, 0u);
+#pragma unroll
+              for (int u = 0; u < 4; u++) {
+                G0 += (int)(int16_t)(v[u].x & 0xffffu);
+                G1 += (int)v[u].x >> 16;
+                G2 += (int)(int16_t)(v[u].y & 0xffffu);
+                G3 += (int)v[u].y >> 16;
+              }
+            }
+            const int c0 = G0 < -CLIPV ? -CLIPV : (G0 > CLIPV ? CLIPV : G0);
+            const int c1 = G1 < -CLIPV ? -CLIPV : (G1 > CLIPV ? CLIPV : G1);
+            const int c2 = G2 < -CLIPV ? -CLIPV : (G2 > CLIPV ? CLIPV : G2);
+            const int c3 = G3 < -CLIPV ? -CLIPV : (G3 > CLIPV ? CLIPV : G3);
+            acc0 += (uint32_t)c0 ^ ((uint32_t)f + base);
+            acc1 += (uint32_t)c1 ^ ((uint32_t)(f + 1) + base);
+            acc2 += (uint32_t)c2 ^ ((uint32_t)(f + 2) + base);
+            acc3 += (uint32_t)c3 ^ ((uint32_t)(f + 3) + base);
+          }
+        }
+        lane[(4 * l) & 7] += acc0;
+        lane[(4 * l + 1) & 7] += acc1;
+        lane[(4 * l + 2) & 7] += acc2;
+        lane[(4 * l + 3) & 7] += acc3;
+      } else
+#endif
       if (P.kind[i] == NARROW8) {
         // Four consecutive int8 factors occupy one aligned word. Transpose the
         // bytes of four rows so each resulting word holds one factor from four
         // samples, then dp4a sums those four samples with no 16-bit truncation.
-        for (int f0 = 4 * tid; f0 < P.nw[i]; f0 += 4 * BlockThreads) {
+        uint32_t acc4[4] = {0, 0, 0, 0};  // lane (4 * tid + j) & 7, fixed per thread and j
+        for (int f0 = 4 * tid; f0 < P.nw[i]; f0 += 4 * NT) {
           int G0 = 0, G1 = 0, G2 = 0, G3 = 0;
 #pragma unroll
           for (int r = 0; r < NEB_NB; r += 4) {
@@ -261,15 +352,48 @@ __global__ void __launch_bounds__(BlockThreads) table_kernel(const uint8_t *__re
             const int f = f0 + j;
             if (f >= P.nw[i]) break;
             const int cg = G[j] < -CLIPV ? -CLIPV : (G[j] > CLIPV ? CLIPV : G[j]);
-            quad_sum[j] += (uint32_t)cg ^ ((uint32_t)f + base);
+            acc4[j] += (uint32_t)cg ^ ((uint32_t)f + base);
           }
         }
+#pragma unroll
+        for (int j = 0; j < 4; j++) lane[(4 * tid + j) & 7] += acc4[j];
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 700
+        // quads on Pascal only (slower than the pairs below on sm_86)
+      } else if (P.kind[i] == NARROW && (P.nw[i] & 3) == 0) {
+        // int16 factors in quads: one 64-bit load per sample brings f .. f+3 (layers and rows are 8-byte aligned,
+        // 2 * f is a multiple of 8), a quarter of the loads of the per-factor gather. Sums stay 32-bit (exact).
+        // f = 4 * tid + 4 * NT * k, so the lanes are (4 * tid + j) & 7: four fixed accumulators.
+        uint32_t acc0 = 0, acc1 = 0, acc2 = 0, acc3 = 0;
+        for (int f = 4 * tid; f < P.nw[i]; f += 4 * NT) {
+          int G0 = 0, G1 = 0, G2 = 0, G3 = 0;
+#pragma unroll
+          for (int b = 0; b < NEB_NB; b++) {
+            const uint2 v = __ldg((const uint2 *)(rows + rb[b] + P.at[i] + 2 * f));
+            G0 += (int)(int16_t)(v.x & 0xffffu);
+            G1 += (int)v.x >> 16;
+            G2 += (int)(int16_t)(v.y & 0xffffu);
+            G3 += (int)v.y >> 16;
+          }
+          const int c0 = G0 < -CLIPV ? -CLIPV : (G0 > CLIPV ? CLIPV : G0);
+          const int c1 = G1 < -CLIPV ? -CLIPV : (G1 > CLIPV ? CLIPV : G1);
+          const int c2 = G2 < -CLIPV ? -CLIPV : (G2 > CLIPV ? CLIPV : G2);
+          const int c3 = G3 < -CLIPV ? -CLIPV : (G3 > CLIPV ? CLIPV : G3);
+          acc0 += (uint32_t)c0 ^ ((uint32_t)f + base);
+          acc1 += (uint32_t)c1 ^ ((uint32_t)(f + 1) + base);
+          acc2 += (uint32_t)c2 ^ ((uint32_t)(f + 2) + base);
+          acc3 += (uint32_t)c3 ^ ((uint32_t)(f + 3) + base);
+        }
+        lane[(4 * tid) & 7] += acc0;
+        lane[(4 * tid + 1) & 7] += acc1;
+        lane[(4 * tid + 2) & 7] += acc2;
+        lane[(4 * tid + 3) & 7] += acc3;
+#endif
       } else if (P.kind[i] == NARROW && (P.nw[i] & 1) == 0) {
         // int16 factors in pairs: one 32-bit load per sample brings entries f and f+1 (low / high half; at, the
         // row size and 2 * f are multiples of 4), halving the loads of the gather. Sums stay 32-bit, so they are
-        // exact. f = 2 * tid + 2 * BlockThreads * k, so the lanes are (2 * tid + j) & 7: two fixed accumulators.
+        // exact. f = 2 * tid + 2 * NT * k, so the lanes are (2 * tid + j) & 7: two fixed accumulators.
         uint32_t acc0 = 0, acc1 = 0;
-        for (int f = 2 * tid; f < P.nw[i]; f += 2 * BlockThreads) {
+        for (int f = 2 * tid; f < P.nw[i]; f += 2 * NT) {
           int G0 = 0, G1 = 0;
 #pragma unroll
           for (int b = 0; b < NEB_NB; b++) {
@@ -282,10 +406,11 @@ __global__ void __launch_bounds__(BlockThreads) table_kernel(const uint8_t *__re
           acc0 += (uint32_t)c0 ^ ((uint32_t)f + base);
           acc1 += (uint32_t)c1 ^ ((uint32_t)(f + 1) + base);
         }
-        pair_sum[0] += acc0;
-        pair_sum[1] += acc1;
+        lane[(2 * tid) & 7] += acc0;
+        lane[(2 * tid + 1) & 7] += acc1;
       } else {
-        for (int f = tid; f < P.nw[i]; f += BlockThreads) {
+        uint32_t acc = 0;  // lane tid & 7 for every f of this thread
+        for (int f = tid; f < P.nw[i]; f += NT) {
           int G = 0;
           if (P.kind[i] == NARROW) {
             for (int b = 0; b < NEB_NB; b++) G += __ldg((const int16_t *)(rows + rb[b] + P.at[i] + 2 * f));
@@ -293,8 +418,9 @@ __global__ void __launch_bounds__(BlockThreads) table_kernel(const uint8_t *__re
             for (int b = 0; b < NEB_NB; b++) G += __ldg((const int32_t *)(rows + rb[b] + P.at[i] + 4 * f));
           }
           const int cg = G < -CLIPV ? -CLIPV : (G > CLIPV ? CLIPV : G);
-          scalar_sum += (uint32_t)cg ^ ((uint32_t)f + base);
+          acc += (uint32_t)cg ^ ((uint32_t)f + base);
         }
+        lane[tid & 7] += acc;
       }
     }
   }
@@ -302,19 +428,15 @@ __global__ void __launch_bounds__(BlockThreads) table_kernel(const uint8_t *__re
   // Addition is modulo 2^32, so changing the accumulation order is safe.
   {
     const int warp = tid >> 5;
-    #pragma unroll
     for (int k = 0; k < 8; k++) {
-      uint32_t sum = (tid & 7) == k ? scalar_sum : 0u;
-      if ((tid & 1) == (k >> 2)) sum += quad_sum[k & 3];
-      if ((tid & 3) == (k >> 1)) sum += pair_sum[k & 1];
-      const uint32_t v = warp_sum(sum);
+      const uint32_t v = warp_sum(lane[k]);
       if (!(tid & 31)) wsum[k][warp] = v;
     }
     __syncthreads();
     if (!tid) {
       for (int k = 0; k < 8; k++) {
         uint32_t v = 0;
-        for (int w = 0; w < BlockThreads / 32; w++) v += wsum[k][w];
+        for (int w = 0; w < NT / 32; w++) v += wsum[k][w];
         lanes[k] = v + P.linear_zero[k];
       }
     }
@@ -334,9 +456,78 @@ __global__ void __launch_bounds__(BlockThreads) table_kernel(const uint8_t *__re
   }
 }
 
+// Sparse scan. Many samples of a trained model have an all-zero gradient, and a zero entry adds the constant
+// 0 ^ (f + base) to the digest, so the digest of an attempt depends only on its active draws (samples with a non-zero
+// gradient). With none it is the zero digest dig[n], with one it is that sample's own digest dig[s], both built with
+// the table. Every evaluated attempt has the same chance (the ticket is a BLAKE3 of digest and key), so this kernel
+// evaluates only the attempts with at most one active draw: one thread per nonce, key + ChaCha8 + 16 bitmap lookups,
+// one more BLAKE3 when selected. evald counts the evaluated attempts. DUMP writes nonce and ticket of every selected
+// attempt instead of comparing (self-test).
+template <bool DUMP>
+__global__ void __launch_bounds__(256) sparse_kernel(const uint32_t *__restrict__ flags, const uint32_t *__restrict__ dig,
+                                                     uint32_t n, const uint32_t *__restrict__ h0, uint32_t start,
+                                                     uint32_t count, const uint32_t *__restrict__ bound, uint32_t *hits,
+                                                     uint32_t max_hits, const uint32_t *__restrict__ cv, uint32_t *evald) {
+  const uint32_t g = blockIdx.x * blockDim.x + threadIdx.x;
+  bool sel = false;
+  uint32_t k[8];
+  uint32_t sidx = n;
+  const uint32_t nonce = start + g;
+  if (g < count) {
+    uint32_t b1[16] = { __ldg(&h0[16]), __ldg(&h0[17]), __ldg(&h0[18]), nonce };
+    uint32_t c[8], u[16];
+#pragma unroll
+    for (int i = 0; i < 8; i++) c[i] = __ldg(&cv[i]);
+    blake3_compress(c, b1, 0, 16, BLAKE3_CHUNK_END | BLAKE3_ROOT, k);
+    chacha8_block0(k, u);
+    int na = 0;
+#pragma unroll
+    for (int j = 0; j < NEB_NB; j++) {
+      const uint32_t s = (uint32_t)(((unsigned long long)u[j] * n) >> 32);
+      if ((__ldg(&flags[s >> 5]) >> (s & 31)) & 1u) { na++; sidx = s; }
+    }
+    sel = na <= 1;
+  }
+  const uint32_t ball = __ballot_sync(0xffffffffu, sel);
+  if ((threadIdx.x & 31) == 0 && ball) atomicAdd(evald, (uint32_t)__popc(ball));
+  if (!sel) return;
+  uint32_t blk[16], t[8];
+#pragma unroll
+  for (int i = 0; i < 8; i++) { blk[i] = __ldg(&dig[8 * sidx + i]); blk[8 + i] = k[i]; }
+  blake3_compress(blake3_iv(), blk, 0, 64, BLAKE3_CHUNK_START | BLAKE3_CHUNK_END | BLAKE3_ROOT, t);
+  if (DUMP) {
+    const uint32_t at = atomicAdd(hits, 1u);
+    if (at < max_hits) {
+      hits[1 + at] = nonce;
+      for (int i = 0; i < 8; i++) hits[1 + max_hits + 8 * at + i] = t[i];
+    }
+    return;
+  }
+  bool ok = true;
+  for (int i = 7; i >= 0; i--) {
+    const uint32_t b = __ldg(&bound[i]);
+    if (t[i] != b) { ok = t[i] < b; break; }
+  }
+  if (ok) {
+    const uint32_t at = atomicAdd(hits, 1u);
+    if (at < max_hits) hits[1 + at] = nonce;
+  }
+}
+
 struct neb2t_scan {
   int device, arch;
-  bool single_warp;
+  // sparse scan: bit s of flags = sample s has a non-zero gradient; dig = 8 digest words per sample alone, then the
+  // zero digest at index n
+  std::vector<uint32_t> flags, dig;
+  uint32_t nactive;
+  uint32_t *d_flags, *d_dig, *d_eval;
+  bool sm6x;           // compute capability 6.x: the launch shape is measured per model
+  int threads;         // threads per attempt for the current model; 0 while measuring
+  int tune_warm;       // the next timed launch is the warm-up
+  uint32_t tune_n[2];  // attempts timed per shape (THREADS, 32)
+  float tune_ms[2];
+  cudaEvent_t ev[2];
+  int pin;             // >= 0: every launch uses that shape (neb2t_scan_pin_shape), untimed
   TPlan plan;
   uint32_t n, capacity, max_hits;
   std::vector<uint8_t> values, labels, rows;
@@ -370,121 +561,224 @@ static void make_plan(const neb2_arch *A, const int *wide, const int *narrow8, T
       p->kind[i] = wide[i] ? WIDE : (narrow8[i] ? NARROW8 : NARROW);
       at += wide[i] ? 4 * L.nw : (narrow8[i] ? ((L.nw + 3) & ~3) : 2 * L.nw);
     }
-    at = (at + 3) & ~3;
+    at = (at + 7) & ~7;  // 8-byte aligned layers and rows: the int16 quad path loads 64 bits per sample
   }
+  for (int i = 0; i < A->nlayers; i++) {
+    const neb2_layer &L = A->l[i];
+    p->am[i] = -1;
+    if (L.kind == NEB2_LINEAR) continue;
+    p->blk[i] = L.cout > 0 ? L.nw / L.cout : L.nw;
+    if (L.cout <= 32 && L.cout > 0 && L.nw % L.cout == 0) { p->am[i] = at; at += 4; }
+  }
+  at = (at + 7) & ~7;
   p->row = at;
   p->shared_words = sh;
 }
 
-// Keep full convolution gradients and record the minimum width required by each layer.
-// Linear factors already use their final representation.
-struct FillStatus { unsigned wide_layers, narrow8_layers; };
+// Per-sample gradients of one model: the convolution entries as int32 (the table width of each layer is chosen
+// afterwards from the range actually seen) and the linear factors (cout errors then cin inputs) as int8.
+struct SampleGrads {
+  std::vector<int32_t> conv;
+  std::vector<int8_t> lin;
+  int conv_w = 0, lin_w = 0;
+};
 
-static FillStatus fill_rows(neb2t_scan *s, const neb2_arch *A, const int8_t *weights) {
+// One evaluation of every sample with neb2_sample_table_row of the C reference (neb2_sample_grad without the linear
+// gradients, which the row never reads: only their factors), on every host thread, recording the range of each
+// convolution layer, so the widths are chosen after a single pass.
+static void sample_grads(neb2t_scan *s, const neb2_arch *A, const int8_t *weights, SampleGrads &sg,
+                         int32_t lo[NEB2_MAX_LAYERS], int32_t hi[NEB2_MAX_LAYERS]) {
   neb2_model *m = (neb2_model *)calloc(1, sizeof *m);
   m->arch = s->arch;
   memcpy(m->w, weights, (size_t)A->nweights);
-  const TPlan &p = s->plan;
-  s->rows.assign((size_t)p.row * s->n, 0);
+  for (int l = 0; l < A->nlayers; l++) {
+    if (A->l[l].kind == NEB2_LINEAR) sg.lin_w += A->l[l].cout + A->l[l].cin;
+    else sg.conv_w += A->l[l].nw;
+  }
+  sg.conv.assign((size_t)sg.conv_w * s->n, 0);
+  sg.lin.assign((size_t)sg.lin_w * s->n, 0);
   unsigned nt = std::thread::hardware_concurrency();
   if (nt == 0) nt = 4;
-  std::vector<unsigned> overflow(nt), overflow8(nt);
+  std::vector<int32_t> tlo((size_t)nt * NEB2_MAX_LAYERS, 0), thi((size_t)nt * NEB2_MAX_LAYERS, 0);
   std::vector<std::thread> th;
   for (unsigned t = 0; t < nt; t++)
     th.emplace_back([&, t] {
       std::vector<int32_t> g(NEB2_MAX_WEIGHTS);
       std::vector<int8_t> fac(2 * NEB2_MAX_WEIGHTS);
-      uint32_t magnitude_bits[NEB2_MAX_LAYERS] = {};
+      int32_t *mylo = tlo.data() + (size_t)t * NEB2_MAX_LAYERS, *myhi = thi.data() + (size_t)t * NEB2_MAX_LAYERS;
       for (uint32_t i = t; i < s->n; i += nt) {
         neb2_sample_table_row(m, s->values.data() + (size_t)i * A->nin, s->labels[i], g.data(), fac.data());
+        int32_t *c = sg.conv.data() + (size_t)i * sg.conv_w;
+        int8_t *f = sg.lin.data() + (size_t)i * sg.lin_w;
+        const int8_t *fp = fac.data();
+        for (int l = 0; l < A->nlayers; l++) {
+          const neb2_layer &L = A->l[l];
+          if (L.kind == NEB2_LINEAR) {
+            memcpy(f, fp, (size_t)(L.cout + L.cin));
+            f += L.cout + L.cin;
+            fp += L.cout + L.cin;
+          } else {
+            for (int k = 0; k < L.nw; k++) {
+              const int32_t v = g[L.w_off + k];
+              c[k] = v;
+              if (v < mylo[l]) mylo[l] = v;
+              if (v > myhi[l]) myhi[l] = v;
+            }
+            c += L.nw;
+          }
+        }
+      }
+    });
+  for (auto &x : th) x.join();
+  free(m);
+  for (int l = 0; l < NEB2_MAX_LAYERS; l++) {
+    lo[l] = hi[l] = 0;
+    for (unsigned t = 0; t < nt; t++) {
+      lo[l] = std::min(lo[l], tlo[(size_t)t * NEB2_MAX_LAYERS + l]);
+      hi[l] = std::max(hi[l], thi[(size_t)t * NEB2_MAX_LAYERS + l]);
+    }
+  }
+}
+
+// Writes the row of every sample in the layout of s->plan from the stored gradients, on every host thread.
+static void pack_rows(neb2t_scan *s, const neb2_arch *A, const SampleGrads &sg) {
+  const TPlan &p = s->plan;
+  s->rows.assign((size_t)p.row * s->n, 0);
+  unsigned nt = std::thread::hardware_concurrency();
+  if (nt == 0) nt = 4;
+  std::vector<std::thread> th;
+  for (unsigned t = 0; t < nt; t++)
+    th.emplace_back([&, t] {
+      for (uint32_t i = t; i < s->n; i += nt) {
         uint8_t *row = s->rows.data() + (size_t)i * p.row;
-        const int8_t *f = fac.data();
+        const int32_t *c = sg.conv.data() + (size_t)i * sg.conv_w;
+        const int8_t *f = sg.lin.data() + (size_t)i * sg.lin_w;
         for (int l = 0; l < A->nlayers; l++) {
           const neb2_layer &L = A->l[l];
           if (p.kind[l] == LINEAR) {
             memcpy(row + p.at[l], f, (size_t)(L.cout + L.cin));
             f += L.cout + L.cin;
-          } else {
-            const int32_t *grad = g.data() + L.w_off;
-            memcpy(row + p.at[l], grad, (size_t)4 * L.nw);
-            // Fold negatives with bitwise complement so -128 and -32768
-            // fit the same unsigned thresholds as 127 and 32767.
-            uint32_t bits = 0;
-            for (int k = 0; k < L.nw; k++) {
-              const int32_t v = grad[k];
-              bits |= v < 0 ? ~uint32_t(v) : uint32_t(v);
-            }
-            magnitude_bits[l] |= bits;
+            continue;
           }
+          if (p.kind[l] == WIDE) {
+            memcpy(row + p.at[l], c, (size_t)4 * L.nw);
+          } else if (p.kind[l] == NARROW8) {
+            uint8_t *o = row + p.at[l];
+            for (int k = 0; k < L.nw; k++) o[k] = (uint8_t)(int8_t)c[k];
+          } else {
+            int16_t *o = (int16_t *)(row + p.at[l]);
+            for (int k = 0; k < L.nw; k++) o[k] = (int16_t)c[k];
+          }
+          if (p.am[l] >= 0) {
+            uint32_t act = 0;
+            for (int ch = 0; ch < L.cout; ch++)
+              for (int k = 0; k < p.blk[l]; k++)
+                if (c[ch * p.blk[l] + k]) { act |= 1u << ch; break; }
+            memcpy(row + p.am[l], &act, 4);
+          }
+          c += L.nw;
         }
       }
-      for (int l = 0; l < A->nlayers; l++) {
-        if (magnitude_bits[l] > 127) overflow8[t] |= 1u << l;
-        if (magnitude_bits[l] > 32767) overflow[t] |= 1u << l;
+    });
+  for (auto &x : th) x.join();
+}
+
+// Sparse scan tables: the active flag of every sample, the digest of every active sample alone and the zero digest
+// (index n), as the reference computes them: lane f & 7, f the flat index in the layer, entry clip(G) ^ (f + 7919 *
+// (layer + 1)). An entry of a linear layer is d[o] * x[q].
+static void sparse_digests(neb2t_scan *s, const neb2_arch *A, const SampleGrads &sg) {
+  const uint32_t n = s->n;
+  s->flags.assign((n + 31) / 32, 0u);
+  s->dig.assign((size_t)8 * (n + 1), 0u);
+  std::vector<uint8_t> act(n, 0);
+  unsigned nt = std::thread::hardware_concurrency();
+  if (nt == 0) nt = 4;
+  // the digest of one sample, or of the zero gradient (i == n)
+  auto digest = [&](uint32_t i, uint32_t *lane) {
+    const int32_t *c = i < n ? sg.conv.data() + (size_t)i * sg.conv_w : NULL;
+    const int8_t *fa = i < n ? sg.lin.data() + (size_t)i * sg.lin_w : NULL;
+    for (int k = 0; k < 8; k++) lane[k] = 0;
+    for (int l = 0; l < A->nlayers; l++) {
+      const neb2_layer &L = A->l[l];
+      const uint32_t base = 7919u * (uint32_t)(l + 1);
+      if (L.kind == NEB2_LINEAR) {
+        for (int o = 0; o < L.cout; o++)
+          for (int q = 0; q < L.cin; q++) {
+            const uint32_t f = (uint32_t)(o * L.cin + q);
+            int G = fa ? (int)fa[o] * (int)fa[L.cout + q] : 0;
+            G = G < -CLIPV ? -CLIPV : (G > CLIPV ? CLIPV : G);
+            lane[f & 7] += (uint32_t)G ^ (f + base);
+          }
+        if (fa) fa += L.cout + L.cin;
+      } else {
+        for (int f = 0; f < L.nw; f++) {
+          int G = c ? c[f] : 0;
+          G = G < -CLIPV ? -CLIPV : (G > CLIPV ? CLIPV : G);
+          lane[f & 7] += (uint32_t)G ^ ((uint32_t)f + base);
+        }
+        if (c) c += L.nw;
+      }
+    }
+  };
+  std::vector<std::thread> th;
+  for (unsigned t = 0; t < nt; t++)
+    th.emplace_back([&, t] {
+      for (uint32_t i = t; i < n; i += nt) {
+        const int32_t *c = sg.conv.data() + (size_t)i * sg.conv_w;
+        bool a = false;
+        for (int k = 0; k < sg.conv_w && !a; k++) a = c[k] != 0;
+        const int8_t *fa = sg.lin.data() + (size_t)i * sg.lin_w;
+        for (int l = 0; l < A->nlayers && !a; l++) {
+          const neb2_layer &L = A->l[l];
+          if (L.kind != NEB2_LINEAR) continue;
+          bool dz = false, xz = false;
+          for (int o = 0; o < L.cout; o++) dz |= fa[o] != 0;
+          for (int q = 0; q < L.cin; q++) xz |= fa[L.cout + q] != 0;
+          a = dz && xz;
+          fa += L.cout + L.cin;
+        }
+        act[i] = a;
+        if (a) digest(i, &s->dig[(size_t)8 * i]);
       }
     });
-  for (auto &t : th) t.join();
-  free(m);
-  FillStatus st = {0, 0};
-  for (unsigned o : overflow) st.wide_layers |= o;
-  for (unsigned o : overflow8) st.narrow8_layers |= o;
-  return st;
+  for (auto &x : th) x.join();
+  digest(n, &s->dig[(size_t)8 * n]);
+  s->nactive = 0;
+  for (uint32_t i = 0; i < n; i++) {
+    if (act[i]) { s->flags[i >> 5] |= 1u << (i & 31); s->nactive++; }
+    else memcpy(&s->dig[(size_t)8 * i], &s->dig[(size_t)8 * n], 32);
+  }
 }
 
 static int build(neb2t_scan *s, const int8_t *weights) {
   const neb2_arch *A = neb2_arch_get(s->arch);
+  // the kernel lists the active outputs of a linear layer in a fixed shared array of 32
+  for (int i = 0; i < A->nlayers; i++)
+    if (A->l[i].kind == NEB2_LINEAR && A->l[i].cout > 32) return (int)cudaErrorInvalidValue;
+  SampleGrads sg;
+  int32_t lo[NEB2_MAX_LAYERS], hi[NEB2_MAX_LAYERS];
+  sample_grads(s, A, weights, sg, lo, hi);
+  // narrowest width that holds every entry of the layer: int8 (dp4a path), else int16, else int32
   int wide[NEB2_MAX_LAYERS] = {0}, n8[NEB2_MAX_LAYERS] = {0};
   for (int i = 0; i < A->nlayers; i++) {
-    wide[i] = s->plan.kind[i] == WIDE;
-    n8[i] = !wide[i] && A->l[i].kind != NEB2_LINEAR;
-  }
-  int raw_wide[NEB2_MAX_LAYERS];
-  for (int i = 0; i < A->nlayers; ++i) raw_wide[i] = 1;
-  int raw_narrow[NEB2_MAX_LAYERS] = {0};
-  make_plan(A, raw_wide, raw_narrow, &s->plan);
-  const TPlan raw = s->plan;
-  if (s->n > s->rows.max_size() / (size_t)raw.row) return (int)cudaErrorInvalidValue;
-  const FillStatus st = fill_rows(s, A, weights);
-  for (int i = 0; i < A->nlayers; i++) {
-    const unsigned flag = 1u << i;
-    if (st.wide_layers & flag) wide[i] = 1;
-    if ((st.wide_layers | st.narrow8_layers) & flag) n8[i] = 0;
+    if (A->l[i].kind == NEB2_LINEAR) continue;
+    if (lo[i] >= -128 && hi[i] <= 127) n8[i] = 1;
+    else if (lo[i] < -32768 || hi[i] > 32767) wide[i] = 1;
   }
   make_plan(A, wide, n8, &s->plan);
-  const TPlan &packed = s->plan;
-  // Every output layer segment and row is at most as large as its input.
-  // Compact in forward order so writes never overwrite unread gradients.
-  for (uint32_t i = 0; i < s->n; ++i) {
-    uint8_t *dst_row = s->rows.data() + (size_t)i * packed.row;
-    const uint8_t *src_row = s->rows.data() + (size_t)i * raw.row;
-    for (int l = 0; l < A->nlayers; ++l) {
-      const neb2_layer &layer = A->l[l];
-      uint8_t *dst = dst_row + packed.at[l];
-      const uint8_t *src = src_row + raw.at[l];
-      size_t bytes;
-      if (packed.kind[l] == LINEAR || packed.kind[l] == WIDE) {
-        bytes = packed.kind[l] == LINEAR ? (size_t)(layer.cout + layer.cin) : (size_t)layer.nw * 4;
-        memmove(dst, src, bytes);
-      } else {
-        const size_t size = packed.kind[l] == NARROW8 ? 1 : 2;
-        bytes = size * layer.nw;
-        for (int k = 0; k < layer.nw; ++k) {
-          int32_t value;
-          memcpy(&value, src + (size_t)k * 4, 4);
-          if (size == 1) dst[k] = (uint8_t)(int8_t)value;
-          else {
-            const int16_t narrow = (int16_t)value;
-            memcpy(dst + (size_t)k * 2, &narrow, 2);
-          }
-        }
-      }
-      const size_t aligned = (bytes + 3) & ~(size_t)3;
-      memset(dst + bytes, 0, aligned - bytes);
-    }
-  }
-  s->rows.resize((size_t)packed.row * s->n);
+  s->threads = s->sm6x ? 0 : THREADS;
+  s->tune_warm = 1;
+  s->tune_n[0] = s->tune_n[1] = 0;
+  s->tune_ms[0] = s->tune_ms[1] = 0.f;
+  s->pin = -1;
+  pack_rows(s, A, sg);
+  sparse_digests(s, A, sg);
   if (s->rows.size() > UINT32_MAX) return (int)cudaErrorInvalidValue;
   TRY(cudaSetDevice(s->device));
+  if (!s->d_flags) TRY(cudaMalloc(&s->d_flags, s->flags.size() * 4));
+  if (!s->d_dig) TRY(cudaMalloc(&s->d_dig, s->dig.size() * 4));
+  TRY(cudaMemcpy(s->d_flags, s->flags.data(), s->flags.size() * 4, cudaMemcpyHostToDevice));
+  TRY(cudaMemcpy(s->d_dig, s->dig.data(), s->dig.size() * 4, cudaMemcpyHostToDevice));
   if (s->rows.size() != s->d_rows_bytes) {
     cudaFree(s->d_rows);
     s->d_rows = NULL;
@@ -500,9 +794,6 @@ int neb2t_scan_open(int device, int arch, const uint8_t *values, const uint8_t *
                    uint32_t capacity, uint32_t max_hits, neb2t_scan **out) {
   const neb2_arch *A = neb2_arch_get(arch);
   if (!A || n == 0 || capacity == 0 || max_hits == 0) return (int)cudaErrorInvalidValue;
-  static_assert(THREADS % 32 == 0, "reduction requires whole CUDA warps");
-  for (int i = 0; i < A->nlayers; i++)
-    if (A->l[i].kind == NEB2_LINEAR && (A->l[i].cin % 8 != 0 || (A->l[i].cout & 1) || A->l[i].cout > 32)) return (int)cudaErrorInvalidValue;
   neb2t_scan *s = new neb2t_scan();
   s->device = device;
   s->arch = arch;
@@ -514,16 +805,22 @@ int neb2t_scan_open(int device, int arch, const uint8_t *values, const uint8_t *
   s->d_rows = NULL;
   s->d_rows_bytes = 0;
   s->d_header = s->d_bound = s->d_hits = NULL;
+  s->d_cv = NULL;
+  s->d_flags = s->d_dig = s->d_eval = NULL;
+  s->nactive = 0;
+  s->ev[0] = s->ev[1] = NULL;
   memset(&s->plan, 0, sizeof s->plan);
   cudaError_t e = cudaSetDevice(device);
-  cudaDeviceProp properties;
-  if (e == cudaSuccess) e = cudaGetDeviceProperties(&properties, device);
-  // The one-warp configuration was tuned for Pascal's sm_61.
-  if (e == cudaSuccess) s->single_warp = properties.major == 6 && properties.minor == 1;
+  int major = 0;
+  if (e == cudaSuccess) e = cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device);
+  s->sm6x = major == 6;
+  if (e == cudaSuccess && s->sm6x) e = cudaEventCreate(&s->ev[0]);
+  if (e == cudaSuccess && s->sm6x) e = cudaEventCreate(&s->ev[1]);
   if (e == cudaSuccess) e = cudaMalloc(&s->d_header, 80);
   if (e == cudaSuccess) e = cudaMalloc(&s->d_cv, 32);
   if (e == cudaSuccess) e = cudaMalloc(&s->d_bound, 32);
   if (e == cudaSuccess) e = cudaMalloc(&s->d_hits, ((size_t)max_hits + 1) * 4);
+  if (e == cudaSuccess) e = cudaMalloc(&s->d_eval, 4);
   int st = (int)e;
   if (st == 0) st = build(s, weights);
   if (st != 0) {
@@ -536,11 +833,9 @@ int neb2t_scan_open(int device, int arch, const uint8_t *values, const uint8_t *
 
 int neb2t_scan_set_model(neb2t_scan *s, const int8_t *weights) { return build(s, weights); }
 
-int neb2t_scan_run(neb2t_scan *s, const uint8_t *header, uint32_t start, uint32_t count, const uint8_t *bound, uint32_t *hits,
-                  uint32_t *nhits) {
-  if (count == 0 || count > s->capacity) return (int)cudaErrorInvalidValue;
+// header, its BLAKE3 prefix (cached), the bound and a cleared hit count
+static int upload_job(neb2t_scan *s, const uint8_t *header, const uint8_t *bound) {
   TRY(cudaSetDevice(s->device));
-  TRY(cudaMemcpyToSymbol(P, &s->plan, sizeof s->plan));
   TRY(cudaMemcpy(s->d_header, header, 80, cudaMemcpyHostToDevice));
   if (!s->prefix_ready || memcmp(s->cached_prefix, header, 64) != 0) {
     header_prefix<<<1, 1>>>(s->d_header, s->d_cv);
@@ -548,18 +843,96 @@ int neb2t_scan_run(neb2t_scan *s, const uint8_t *header, uint32_t start, uint32_
     memcpy(s->cached_prefix, header, 64);
     s->prefix_ready = true;
   }
-  TRY(cudaMemcpy(s->d_bound, bound, 32, cudaMemcpyHostToDevice));
+  if (bound) TRY(cudaMemcpy(s->d_bound, bound, 32, cudaMemcpyHostToDevice));
   TRY(cudaMemset(s->d_hits, 0, 4));
+  return 0;
+}
+
+#define SPARSE_CHUNK (1u << 22)  // nonces per sparse launch
+
+int neb2t_scan_run_sparse(neb2t_scan *s, const uint8_t *header, uint32_t start, uint32_t count, const uint8_t *bound,
+                          uint32_t *hits, uint32_t *nhits, uint32_t *evaluated) {
+  if (count == 0) return (int)cudaErrorInvalidValue;
+  const int st = upload_job(s, header, bound);
+  if (st) return st;
+  TRY(cudaMemset(s->d_eval, 0, 4));
+  for (uint32_t done = 0; done < count;) {
+    const uint32_t part = count - done < SPARSE_CHUNK ? count - done : SPARSE_CHUNK;
+    sparse_kernel<false><<<(part + 255) / 256, 256>>>(s->d_flags, s->d_dig, s->n, s->d_header, start + done, part,
+                                                      s->d_bound, s->d_hits, s->max_hits, s->d_cv, s->d_eval);
+    TRY(cudaGetLastError());
+    done += part;
+  }
+  uint32_t found = 0;
+  TRY(cudaMemcpy(&found, s->d_hits, 4, cudaMemcpyDeviceToHost));
+  TRY(cudaMemcpy(evaluated, s->d_eval, 4, cudaMemcpyDeviceToHost));
+  *nhits = found;
+  if (found > 0)
+    TRY(cudaMemcpy(hits, s->d_hits + 1, (size_t)(found < s->max_hits ? found : s->max_hits) * 4, cudaMemcpyDeviceToHost));
+  return 0;
+}
+
+int neb2t_scan_sparse_dump(neb2t_scan *s, const uint8_t *header, uint32_t start, uint32_t count, uint32_t max,
+                           uint32_t *nonces, uint8_t *tickets, uint32_t *ndump) {
+  if (count == 0 || max == 0) return (int)cudaErrorInvalidValue;
+  const int st = upload_job(s, header, NULL);
+  if (st) return st;
+  uint32_t *d = NULL;
+  TRY(cudaMalloc(&d, ((size_t)9 * max + 1) * 4));
+  cudaError_t e = cudaMemset(d, 0, 4);
+  if (e == cudaSuccess) e = cudaMemset(s->d_eval, 0, 4);
+  if (e == cudaSuccess) {
+    sparse_kernel<true><<<(count + 255) / 256, 256>>>(s->d_flags, s->d_dig, s->n, s->d_header, start, count, s->d_bound,
+                                                      d, max, s->d_cv, s->d_eval);
+    e = cudaGetLastError();
+  }
+  uint32_t found = 0;
+  if (e == cudaSuccess) e = cudaMemcpy(&found, d, 4, cudaMemcpyDeviceToHost);
+  if (found > max) found = max;
+  if (e == cudaSuccess && found) e = cudaMemcpy(nonces, d + 1, (size_t)found * 4, cudaMemcpyDeviceToHost);
+  if (e == cudaSuccess && found) e = cudaMemcpy(tickets, d + 1 + max, (size_t)found * 32, cudaMemcpyDeviceToHost);
+  cudaFree(d);
+  *ndump = found;
+  return (int)e;
+}
+
+uint32_t neb2t_scan_active(const neb2t_scan *s) { return s->nactive; }
+
+int neb2t_scan_run(neb2t_scan *s, const uint8_t *header, uint32_t start, uint32_t count, const uint8_t *bound, uint32_t *hits,
+                  uint32_t *nhits) {
+  if (count == 0 || count > s->capacity) return (int)cudaErrorInvalidValue;
+  TRY(cudaSetDevice(s->device));
+  TRY(cudaMemcpyToSymbol(P, &s->plan, sizeof s->plan));
+  const int st = upload_job(s, header, bound);
+  if (st) return st;
   for (uint32_t done = 0; done < count; done += CHUNK) {
     const uint32_t part = count - done < CHUNK ? count - done : CHUNK;
-    const size_t shared = (size_t)s->plan.shared_words * sizeof(int32_t);
-    if (s->single_warp)
-      table_kernel<32><<<part, 32, shared>>>(s->d_rows, s->n, s->d_header, start + done, s->d_bound,
-                                           s->d_hits, s->max_hits, s->d_cv);
+    const size_t shm = (size_t)s->plan.shared_words * 4;
+    const bool timed = s->pin < 0 && s->threads == 0 && part >= TUNE_MIN;
+    const int k = s->pin >= 0 ? s->pin
+                : s->threads ? (s->threads == 32) : (s->tune_n[1] < s->tune_n[0]);  // the less measured shape
+    if (timed) TRY(cudaEventRecord(s->ev[0]));
+    if (k)
+      table_kernel<32><<<part, 32, shm>>>(s->d_rows, s->n, s->d_header, start + done, s->d_bound, s->d_hits,
+                                          s->max_hits, s->d_cv);
     else
-      table_kernel<THREADS><<<part, THREADS, shared>>>(s->d_rows, s->n, s->d_header, start + done, s->d_bound,
-                                                     s->d_hits, s->max_hits, s->d_cv);
+      table_kernel<THREADS><<<part, THREADS, shm>>>(s->d_rows, s->n, s->d_header, start + done, s->d_bound, s->d_hits,
+                                                    s->max_hits, s->d_cv);
     TRY(cudaGetLastError());
+    if (timed) {
+      float ms = 0.f;
+      TRY(cudaEventRecord(s->ev[1]));
+      TRY(cudaEventSynchronize(s->ev[1]));
+      TRY(cudaEventElapsedTime(&ms, s->ev[0], s->ev[1]));
+      if (s->tune_warm) {
+        s->tune_warm = 0;
+      } else {
+        s->tune_ms[k] += ms;
+        s->tune_n[k] += part;
+        if (s->tune_n[0] >= TUNE_ATTEMPTS && s->tune_n[1] >= TUNE_ATTEMPTS)
+          s->threads = s->tune_ms[1] / s->tune_n[1] < s->tune_ms[0] / s->tune_n[0] ? 32 : THREADS;
+      }
+    }
   }
   uint32_t found = 0;
   TRY(cudaMemcpy(&found, s->d_hits, 4, cudaMemcpyDeviceToHost));
@@ -569,14 +942,23 @@ int neb2t_scan_run(neb2t_scan *s, const uint8_t *header, uint32_t start, uint32_
   return 0;
 }
 
+int neb2t_scan_threads(const neb2t_scan *s) { return s->threads; }
+int neb2t_scan_shapes(const neb2t_scan *s) { return s->sm6x ? 2 : 1; }
+void neb2t_scan_pin_shape(neb2t_scan *s, int i) { s->pin = i >= 0 && i < neb2t_scan_shapes(s) ? i : -1; }
+
 void neb2t_scan_close(neb2t_scan *s) {
   if (!s) return;
   cudaSetDevice(s->device);
+  if (s->ev[0]) cudaEventDestroy(s->ev[0]);
+  if (s->ev[1]) cudaEventDestroy(s->ev[1]);
   cudaFree(s->d_rows);
   cudaFree(s->d_header);
   cudaFree(s->d_cv);
   cudaFree(s->d_bound);
   cudaFree(s->d_hits);
+  cudaFree(s->d_flags);
+  cudaFree(s->d_dig);
+  cudaFree(s->d_eval);
   delete s;
 }
 

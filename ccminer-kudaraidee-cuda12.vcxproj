@@ -444,7 +444,9 @@
     </CudaCompile>
     <CudaCompile Include="algos\pearlhash\pearlhash.cu" />
     <CudaCompile Include="algos\nebhash\nebhash2_cuda.cu" />
-    <CudaCompile Include="algos\nebhash\nebhash2_table_cuda.cu" />
+    <CudaCompile Include="algos\nebhash\nebhash2_table_cuda.cu">
+      <MaxRegCount>0</MaxRegCount>
+    </CudaCompile>
     <CudaCompile Include="algos\verthash\verthash.cu" />
     <CudaCompile Include="algos\verthash\cuda_verthash.cu" />
     <CudaCompile Include="algos\kawpow\cuda_kawpow.cu" />

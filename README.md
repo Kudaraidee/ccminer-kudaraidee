@@ -251,6 +251,12 @@ reference before submitting `mining.submit`. A pool may also send a
 counts and logs a real solved block instead of inferring one from share
 difficulty.
 
+Each model is self-tested on upload against the portable reference, and the
+miner selects between the table scan and a sparse scan for attempts with at
+most one active sample. On Pascal the 128-thread and one-warp launch shapes are
+timed per model. `ccminer -a nebhash --benchmark --neb-dataset=PATH` runs a
+synthetic, CPU-verified benchmark without a pool.
+
 The reference implementation and CUDA kernel live in `algos/nebhash/` under
 Apache-2.0 (`LICENSE.NEB`). Full documentation: [English](algos/nebhash/README.md),
 [ภาษาไทย](algos/nebhash/README.th.md).
